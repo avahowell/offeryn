@@ -15,7 +15,6 @@ impl Calculator {
         a + b
     }
 
-    /// Subtract two numbers
     async fn subtract(&self, a: i64, b: i64) -> i64 {
         a - b
     }
@@ -54,7 +53,6 @@ async fn main() {
 
     // Register the calculator tools
     server.register_tools(Calculator::default()).await;
-
 
     // Create the router
     let app = SseTransport::create_router(server);

@@ -29,7 +29,8 @@ jsonrpc-core = "18.0"
 members = [
     "mcp-derive",
     "mcp-types",
-    "examples/calculator"
+    "examples/calculator",
+    "examples/stdio-calculator"
 ]
 
 [dev-dependencies]

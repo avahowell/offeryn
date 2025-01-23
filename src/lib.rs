@@ -10,4 +10,4 @@ pub use mcp_types::{
 };
 pub use server::McpServer;
 pub use tool::*;
-pub use transport::SseTransport;
+pub use transport::{SseTransport, StdioTransport};

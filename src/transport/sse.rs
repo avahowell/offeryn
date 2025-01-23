@@ -8,7 +8,7 @@ use axum::{
     Extension, Router,
 };
 use futures::stream::Stream;
-use jsonrpc_core::{Call, Id, MethodCall, Output, Params, Request, Response, Version};
+use jsonrpc_core::{Output, Request as JsonRpcRequest, Response as JsonRpcResponse};
 use std::convert::Infallible;
 use std::{
     collections::HashMap,
@@ -17,13 +17,6 @@ use std::{
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
-
-#[derive(serde::Deserialize)]
-struct JsonRpcRequestWrapper {
-    method: String,
-    id: Option<serde_json::Value>,
-    params: Option<serde_json::Value>,
-}
 
 pub struct SseTransport {
     connections: HashMap<String, mpsc::Sender<Result<Event, Infallible>>>,
@@ -57,7 +50,7 @@ impl SseTransport {
                     |Query(params): Query<HashMap<String, String>>,
                      Extension(state): Extension<Arc<Mutex<SseTransport>>>,
                      Extension(server): Extension<Arc<McpServer>>,
-                     Json(request): Json<JsonRpcRequestWrapper>| async move {
+                     Json(request): Json<JsonRpcRequest>| async move {
                         let session_id = match params.get("sessionId") {
                             Some(id) => id,
                             None => {
@@ -70,23 +63,6 @@ impl SseTransport {
                             session_id = %session_id,
                             "Received JSON-RPC request"
                         );
-
-                        let params = match request.params {
-                            Some(p) => match p.as_object() {
-                                Some(obj) => Params::Map(obj.clone()),
-                                None => Params::None,
-                            },
-                            None => Params::None,
-                        };
-
-                        let request = Request::Single(Call::MethodCall(MethodCall {
-                            jsonrpc: Some(Version::V2),
-                            method: request.method,
-                            params,
-                            id: request
-                                .id
-                                .map_or(Id::Null, |id| Id::Num(id.as_u64().unwrap_or(0))),
-                        }));
 
                         Self::message_handler(session_id.clone(), state, server, request).await
                     },
@@ -164,8 +140,8 @@ impl SseTransport {
         session_id: String,
         state: Arc<Mutex<SseTransport>>,
         server: Arc<McpServer>,
-        request: Request,
-    ) -> Result<Json<Response>, StatusCode> {
+        request: JsonRpcRequest,
+    ) -> Result<Json<JsonRpcResponse>, StatusCode> {
         // Get the sender from the state
         let tx = {
             let state = state.lock().unwrap();
@@ -200,7 +176,7 @@ impl SseTransport {
         })?;
 
         // Send response through SSE channel if it's a successful response
-        if let Response::Single(Output::Success(_)) = &response {
+        if let JsonRpcResponse::Single(Output::Success(_)) = &response {
             // Ensure we send a proper JSON-RPC message
             let event =
                 Event::default()
@@ -248,6 +224,7 @@ mod tests {
     use crate::McpServer;
     use mcp_derive::mcp_tool;
     use serde_json::{json, Value};
+    use jsonrpc_core::{Id, Params, Version, Call, MethodCall};
 
     /// A simple calculator that can perform basic arithmetic operations
     #[derive(Default)]
@@ -289,7 +266,7 @@ mod tests {
         server.register_tools(calc).await;
 
         // Test addition
-        let request = Request::Single(Call::MethodCall(MethodCall {
+        let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
             jsonrpc: Some(Version::V2),
             method: "tools/call".to_string(),
             params: Params::Map(
@@ -308,7 +285,7 @@ mod tests {
         }));
 
         let response = server.handle_request(request).await.unwrap();
-        if let Response::Single(Output::Success(success)) = response {
+        if let JsonRpcResponse::Single(Output::Success(success)) = response {
             let result: Value = success.result;
             let content = result.get("content").unwrap().as_array().unwrap();
             let text = content[0].get("text").unwrap().as_str().unwrap();
@@ -318,7 +295,7 @@ mod tests {
         }
 
         // Test division
-        let request = Request::Single(Call::MethodCall(MethodCall {
+        let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
             jsonrpc: Some(Version::V2),
             method: "tools/call".to_string(),
             params: Params::Map(
@@ -337,7 +314,7 @@ mod tests {
         }));
 
         let response = server.handle_request(request).await.unwrap();
-        if let Response::Single(Output::Success(success)) = response {
+        if let JsonRpcResponse::Single(Output::Success(success)) = response {
             let result: Value = success.result;
             let content = result.get("content").unwrap().as_array().unwrap();
             let text = content[0].get("text").unwrap().as_str().unwrap();
@@ -347,7 +324,7 @@ mod tests {
         }
 
         // Test division by zero
-        let request = Request::Single(Call::MethodCall(MethodCall {
+        let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
             jsonrpc: Some(Version::V2),
             method: "tools/call".to_string(),
             params: Params::Map(
@@ -366,7 +343,7 @@ mod tests {
         }));
 
         let response = server.handle_request(request).await.unwrap();
-        if let Response::Single(Output::Success(success)) = response {
+        if let JsonRpcResponse::Single(Output::Success(success)) = response {
             let result: Value = success.result;
             let content = result.get("content").unwrap().as_array().unwrap();
             let text = content[0].get("text").unwrap().as_str().unwrap();

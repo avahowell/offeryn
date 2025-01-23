@@ -1,9 +1,12 @@
 use crate::McpError;
-use jsonrpc_core::{Call, ErrorCode, Failure, Output, Params, Success, Version};
+use jsonrpc_core::{
+    Call, ErrorCode, Failure, Output, Params, Request as JsonRpcRequest,
+    Response as JsonRpcResponse, Success, Version,
+};
 use mcp_types::*;
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
 use tokio::sync::Mutex;
+use tracing::{debug, info, warn};
 
 pub struct McpServer {
     name: String,
@@ -69,9 +72,26 @@ impl McpServer {
                 );
                 (call.id, call.method, call.params)
             }
+            JsonRpcRequest::Single(Call::Notification(notification)) => {
+                debug!(
+                    method = %notification.method,
+                    params = %serde_json::to_string_pretty(&notification.params).unwrap_or_default(),
+                    "Received JSON-RPC notification"
+                );
+                // For now, just return an empty success response
+                // TODO
+                return Ok(JsonRpcResponse::Single(Output::Success(Success {
+                    jsonrpc: Some(Version::V2),
+                    result: serde_json::json!({}),
+                    id: Id::Num(0),
+                })));
+            }
             _ => {
-                warn!("Invalid request format - expected MethodCall");
-                return Err(McpError::InvalidRequest);
+                return Ok(JsonRpcResponse::Single(Output::Failure(Failure {
+                    jsonrpc: Some(Version::V2),
+                    error: McpError::InvalidRequest.into(),
+                    id: Id::Num(0),
+                })));
             }
         };
 
@@ -110,11 +130,14 @@ impl McpServer {
             "tools/list" => {
                 info!("Processing tools/list request");
                 let tools_lock = self.tools.lock().await;
-                let tools: Vec<Tool> = tools_lock.values().map(|tool| Tool {
-                    name: tool.name().to_string(),
-                    description: tool.description().to_string(),
-                    input_schema: tool.input_schema(),
-                }).collect();
+                let tools: Vec<Tool> = tools_lock
+                    .values()
+                    .map(|tool| Tool {
+                        name: tool.name().to_string(),
+                        description: tool.description().to_string(),
+                        input_schema: tool.input_schema(),
+                    })
+                    .collect();
 
                 let result = ListToolsResult {
                     tools,
