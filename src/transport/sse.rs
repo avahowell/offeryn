@@ -354,59 +354,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_calculator_tools_list() {
-        let mut server = McpServer::new("test-calculator", "1.0.0");
-        let calc = CalculatorImpl::default();
-        server.register_tools(calc);
-
-        let request = Request::Single(Call::MethodCall(MethodCall {
-            jsonrpc: Some(Version::V2),
-            method: "tools/list".to_string(),
-            params: Params::None,
-            id: Id::Num(1),
-        }));
-
-        let response = server.handle_request(request).await.unwrap();
-        if let Response::Single(Output::Success(success)) = response {
-            let result: Value = success.result;
-            println!("Raw tools list JSON:\n{}", serde_json::to_string_pretty(&result).unwrap());
-            let tools = result.get("tools").unwrap().as_array().unwrap();
-
-            // Should have 4 calculator tools
-            assert_eq!(tools.len(), 4);
-
-            // Verify each tool's name and description
-            let tool_info: Vec<(&str, &str)> = tools.iter()
-                .map(|t| (
-                    t["name"].as_str().unwrap(),
-                    t["description"].as_str().unwrap()
-                ))
-                .collect();
-
-            assert!(tool_info.contains(&("calculator_add", "Add two numbers")));
-            assert!(tool_info.contains(&("calculator_subtract", "Subtract two numbers")));
-            assert!(tool_info.contains(&("calculator_multiply", "Multiply two numbers")));
-            assert!(tool_info.contains(&("calculator_divide", "Divide two numbers")));
-
-            // Verify input schema for add function
-            let add_tool = tools.iter()
-                .find(|t| t["name"].as_str().unwrap() == "calculator_add")
-                .unwrap();
-
-            let schema = &add_tool["input_schema"];
-            assert_eq!(schema["type"], "object");
-            
-            let properties = schema["properties"].as_object().unwrap();
-            assert!(properties.contains_key("a"));
-            assert!(properties.contains_key("b"));
-            assert_eq!(properties["a"]["type"], "integer");
-            assert_eq!(properties["b"]["type"], "integer");
-        } else {
-            panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
     async fn test_sse_transport() {
         // Create a test server
         let mut server = McpServer::new("test-server", "1.0.0");

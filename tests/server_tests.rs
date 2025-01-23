@@ -1,6 +1,8 @@
-use mcp_server::{McpServer, JsonRpcRequest, McpTool, ToolContent, ToolResult};
+use mcp_types::*;
+use mcp_rs::{McpServer, McpTool, McpError};
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use jsonrpc_core::{Call, MethodCall, Id, Params, Version, Output, ErrorCode};
 
 // Mock tool for testing
 struct MockTool;
@@ -30,8 +32,8 @@ impl McpTool for MockTool {
         let echo = args["echo"].as_str().ok_or("Missing echo parameter")?;
         Ok(ToolResult {
             content: vec![ToolContent {
-                r#type: "text".to_string(),
                 text: echo.to_string(),
+                r#type: "text".to_string(),
             }],
             is_error: false,
         })
@@ -40,99 +42,131 @@ impl McpTool for MockTool {
 
 #[tokio::test]
 async fn test_tools_list() {
-    let mut server = McpServer::new("test-server".to_string(), "1.0.0".to_string());
-    server.register_tool(Box::new(MockTool));
+    let mut server = McpServer::new("test-server", "1.0.0");
+    server.register_tool(MockTool);
 
-    let request = JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(1)),
+    let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
+        jsonrpc: Some(Version::V2),
+        id: Id::Num(1),
         method: "tools/list".to_string(),
-        params: None,
-    };
+        params: Params::None,
+    }));
 
-    let response = server.handle_request(request).await;
-
-    assert!(response.error.is_none());
-    assert!(response.result.is_some());
-
-    let result = response.result.unwrap();
-    let tools = result["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 1);
-    assert_eq!(tools[0]["name"], "mock_tool");
+    let response = server.handle_request(request).await.unwrap();
+    
+    match response {
+        JsonRpcResponse::Single(Output::Success(success)) => {
+            let result: ListToolsResult = serde_json::from_value(success.result).unwrap();
+            assert_eq!(result.tools.len(), 1);
+            assert_eq!(result.tools[0].name, "mock_tool");
+            assert_eq!(result.tools[0].description, "A mock tool for testing");
+            assert!(result.next_page_token.is_none());
+        }
+        _ => panic!("Expected successful response"),
+    }
 }
 
 #[tokio::test]
 async fn test_tool_execution() {
-    let mut server = McpServer::new("test-server".to_string(), "1.0.0".to_string());
-    server.register_tool(Box::new(MockTool));
+    let mut server = McpServer::new("test-server", "1.0.0");
+    server.register_tool(MockTool);
 
-    let request = JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(1)),
-        method: "tools/call".to_string(),
-        params: Some(json!({
-            "name": "mock_tool",
-            "arguments": {
-                "echo": "Hello, World!"
-            }
+    let params = serde_json::Map::from_iter(vec![
+        ("name".to_string(), json!("mock_tool")),
+        ("arguments".to_string(), json!({
+            "echo": "Hello, World!"
         })),
-    };
+    ]);
 
-    let response = server.handle_request(request).await;
+    let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
+        jsonrpc: Some(Version::V2),
+        id: Id::Num(1),
+        method: "tools/call".to_string(),
+        params: Params::Map(params),
+    }));
 
-    assert!(response.error.is_none());
-    assert!(response.result.is_some());
-
-    let result = response.result.unwrap();
-    assert_eq!(
-        result["content"][0]["text"].as_str().unwrap(),
-        "Hello, World!"
-    );
-    assert_eq!(result["isError"].as_bool().unwrap(), false);
+    let response = server.handle_request(request).await.unwrap();
+    
+    match response {
+        JsonRpcResponse::Single(Output::Success(success)) => {
+            let result: CallToolResult = serde_json::from_value(success.result).unwrap();
+            assert_eq!(result.content.len(), 1);
+            match &result.content[0] {
+                Content::Text { text } => assert_eq!(text, "Hello, World!"),
+                Content::Image { .. } => panic!("Expected text content"),
+                Content::EmbeddedResource { .. } => panic!("Expected text content"),
+            }
+            assert_eq!(result.is_error, Some(false));
+        }
+        _ => panic!("Expected successful response"),
+    }
 }
 
 #[tokio::test]
 async fn test_unknown_tool() {
-    let server = McpServer::new("test-server".to_string(), "1.0.0".to_string());
+    let mut server = McpServer::new("test-server", "1.0.0");
 
-    let request = JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(1)),
+    let params = serde_json::Map::from_iter(vec![
+        ("name".to_string(), json!("non_existent_tool")),
+        ("arguments".to_string(), json!({})),
+    ]);
+
+    let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
+        jsonrpc: Some(Version::V2),
+        id: Id::Num(1),
         method: "tools/call".to_string(),
-        params: Some(json!({
-            "name": "non_existent_tool",
-            "arguments": {}
-        })),
-    };
+        params: Params::Map(params),
+    }));
 
     let response = server.handle_request(request).await;
-
-    assert!(response.error.is_none());
-    assert!(response.result.is_some());
-
-    let result = response.result.unwrap();
-    assert!(result["content"][0]["text"]
-        .as_str()
-        .unwrap()
-        .contains("Unknown tool"));
-    assert!(result["isError"].as_bool().unwrap());
+    assert!(matches!(response, Err(McpError::MethodNotFound)));
 }
 
 #[tokio::test]
 async fn test_invalid_method() {
-    let server = McpServer::new("test-server".to_string(), "1.0.0".to_string());
+    let mut server = McpServer::new("test-server", "1.0.0");
 
-    let request = JsonRpcRequest {
-        jsonrpc: "2.0".to_string(),
-        id: Some(json!(1)),
+    let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
+        jsonrpc: Some(Version::V2),
+        id: Id::Num(1),
         method: "invalid/method".to_string(),
-        params: None,
-    };
+        params: Params::None,
+    }));
 
-    let response = server.handle_request(request).await;
+    let response = server.handle_request(request).await.unwrap();
+    
+    match response {
+        JsonRpcResponse::Single(Output::Failure(failure)) => {
+            assert_eq!(failure.error.code.code(), jsonrpc_core::ErrorCode::MethodNotFound.code());
+            assert_eq!(failure.error.message, "Method not found");
+        }
+        _ => panic!("Expected failure response"),
+    }
+}
 
-    assert!(response.error.is_some());
-    let error = response.error.unwrap();
-    assert_eq!(error.code, -32601);
-    assert_eq!(error.message, "Method not found");
+#[tokio::test]
+async fn test_initialize() {
+    let mut server = McpServer::new("test-server", "1.0.0");
+    server.register_tool(MockTool);
+
+    let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
+        jsonrpc: Some(Version::V2),
+        id: Id::Num(1),
+        method: "initialize".to_string(),
+        params: Params::None,
+    }));
+
+    let response = server.handle_request(request).await.unwrap();
+    
+    match response {
+        JsonRpcResponse::Single(Output::Success(success)) => {
+            let result: InitializeResult = serde_json::from_value(success.result).unwrap();
+            assert_eq!(result.server_info.name, "test-server");
+            assert_eq!(result.server_info.version, "1.0.0");
+            assert_eq!(result.protocol_version, LATEST_PROTOCOL_VERSION);
+            assert_eq!(result.capabilities.tools.len(), 1);
+            assert!(result.capabilities.tools.contains_key("mock_tool"));
+        }
+        _ => panic!("Expected successful response"),
+    }
 }
