@@ -2,9 +2,8 @@ use mcp_derive::mcp_tool;
 use mcp_rs::{McpServer, SseTransport};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter};
 use std::net::SocketAddr;
-use axum::serve;
 
 /// A simple calculator that can perform basic arithmetic operations
 #[mcp_tool]

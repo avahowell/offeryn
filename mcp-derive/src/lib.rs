@@ -2,7 +2,6 @@ use proc_macro::TokenStream;
 use quote::{quote, format_ident};
 use syn::{parse_macro_input, ItemTrait, TraitItem, Type, ReturnType, Pat, Attribute, Meta};
 use convert_case::{Case, Casing};
-use proc_macro2::Span;
 
 fn extract_doc_string(attrs: &[Attribute]) -> String {
     attrs.iter()

@@ -1,4 +1,4 @@
-use crate::{JsonRpcRequest, JsonRpcResponse, McpServer};
+use crate::McpServer;
 use axum::{
     routing::{get, post},
     Router, Extension,
@@ -16,13 +16,12 @@ use uuid::Uuid;
 use std::convert::Infallible;
 use async_stream::stream;
 use tracing::{info, warn, error};
-use jsonrpc_core::{Call, Output, Success, Request, Response, Id, Version, MethodCall, Params};
+use jsonrpc_core::{Call, Output, Request, Response, Id, Version, MethodCall, Params};
 
 #[derive(serde::Deserialize)]
 struct JsonRpcRequestWrapper {
-    jsonrpc: String,
-    id: Option<serde_json::Value>,
     method: String,
+    id: Option<serde_json::Value>,
     params: Option<serde_json::Value>,
 }
 
@@ -236,61 +235,12 @@ impl SseTransport {
     }
 }
 
-// Add a module to handle automatic cleanup of dropped connections
-pub mod connection_cleanup {
-    use super::*;
-    use std::time::Duration;
-    use tokio::time;
-
-    pub async fn start_cleanup_task(state: Arc<Mutex<SseTransport>>) {
-        info!("Starting connection cleanup task");
-        tokio::spawn(async move {
-            let mut interval = time::interval(Duration::from_secs(60));
-            loop {
-                interval.tick().await;
-                info!("Running connection cleanup");
-                cleanup_dead_connections(&state).await;
-            }
-        });
-    }
-
-    async fn cleanup_dead_connections(state: &Arc<Mutex<SseTransport>>) {
-        let mut state = state.lock().unwrap();
-        let before_count = state.connections.len();
-        state.connections.retain(|connection_id, tx| {
-            let is_alive = !tx.is_closed();
-            if !is_alive {
-                info!(
-                    connection_id = %connection_id,
-                    "Removing dead connection"
-                );
-            }
-            is_alive
-        });
-        let after_count = state.connections.len();
-        info!(
-            connections_before = before_count,
-            connections_after = after_count,
-            removed = before_count - after_count,
-            "Cleaned up dead connections"
-        );
-    }
-}
-
-// Add helper types for strongly typed responses
-#[derive(serde::Serialize)]
-struct SseEndpointResponse {
-    endpoint: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::time::timeout;
-    use std::time::Duration;
-    use crate::tool::{McpTool, ToolResult, ToolContent};
+    use crate::{McpServer, CallToolRequest};
     use mcp_derive::mcp_tool;
-    use serde_json::Value;
+    use serde_json::{json, Value};
     use async_trait::async_trait;
 
     /// A simple calculator that can perform basic arithmetic operations
@@ -331,67 +281,76 @@ mod tests {
         server.register_tools(calc);
 
         // Test addition
-        let add_request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: Some(serde_json::json!(1)),
+        let request = Request::Single(Call::MethodCall(MethodCall {
+            jsonrpc: Some(Version::V2),
             method: "tools/call".to_string(),
-            params: Some(serde_json::json!({
+            params: Params::Map(json!({
                 "name": "calculator_add",
                 "arguments": {
                     "a": 2,
                     "b": 3
                 }
-            })),
-        };
+            }).as_object().unwrap().clone()),
+            id: Id::Num(1),
+        }));
         
-        let response = server.handle_request(add_request).await.unwrap();
-        assert!(response.result.is_some());
-        let result = response.result.unwrap();
-        let content = result.get("content").unwrap().as_array().unwrap();
-        let text = content[0].get("text").unwrap().as_str().unwrap();
-        assert_eq!(text, "5"); // 2 + 3 = 5
+        let response = server.handle_request(request).await.unwrap();
+        if let Response::Single(Output::Success(success)) = response {
+            let result: Value = success.result;
+            let content = result.get("content").unwrap().as_array().unwrap();
+            let text = content[0].get("text").unwrap().as_str().unwrap();
+            assert_eq!(text, "5"); // 2 + 3 = 5
+        } else {
+            panic!("Expected successful response");
+        }
 
         // Test division
-        let div_request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: Some(serde_json::json!(2)),
+        let request = Request::Single(Call::MethodCall(MethodCall {
+            jsonrpc: Some(Version::V2),
             method: "tools/call".to_string(),
-            params: Some(serde_json::json!({
+            params: Params::Map(json!({
                 "name": "calculator_divide",
                 "arguments": {
                     "a": 10,
                     "b": 2
                 }
-            })),
-        };
+            }).as_object().unwrap().clone()),
+            id: Id::Num(2),
+        }));
         
-        let response = server.handle_request(div_request).await.unwrap();
-        assert!(response.result.is_some());
-        let result = response.result.unwrap();
-        let content = result.get("content").unwrap().as_array().unwrap();
-        let text = content[0].get("text").unwrap().as_str().unwrap();
-        assert_eq!(text, "5"); // 10 / 2 = 5
+        let response = server.handle_request(request).await.unwrap();
+        if let Response::Single(Output::Success(success)) = response {
+            let result: Value = success.result;
+            let content = result.get("content").unwrap().as_array().unwrap();
+            let text = content[0].get("text").unwrap().as_str().unwrap();
+            assert_eq!(text, "5"); // 10 / 2 = 5
+        } else {
+            panic!("Expected successful response");
+        }
 
         // Test division by zero
-        let div_zero_request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: Some(serde_json::json!(3)),
+        let request = Request::Single(Call::MethodCall(MethodCall {
+            jsonrpc: Some(Version::V2),
             method: "tools/call".to_string(),
-            params: Some(serde_json::json!({
+            params: Params::Map(json!({
                 "name": "calculator_divide",
                 "arguments": {
                     "a": 1,
                     "b": 0
                 }
-            })),
-        };
+            }).as_object().unwrap().clone()),
+            id: Id::Num(3),
+        }));
         
-        let response = server.handle_request(div_zero_request).await.unwrap();
-        assert!(response.result.is_some());
-        let result = response.result.unwrap();
-        let content = result.get("content").unwrap().as_array().unwrap();
-        let text = content[0].get("text").unwrap().as_str().unwrap();
-        assert_eq!(text, "Cannot divide by zero");
+        let response = server.handle_request(request).await.unwrap();
+        if let Response::Single(Output::Success(success)) = response {
+            let result: Value = success.result;
+            let content = result.get("content").unwrap().as_array().unwrap();
+            let text = content[0].get("text").unwrap().as_str().unwrap();
+            assert_eq!(text, "Cannot divide by zero");
+        } else {
+            panic!("Expected successful response");
+        }
     }
 
     #[tokio::test]
@@ -400,50 +359,51 @@ mod tests {
         let calc = CalculatorImpl::default();
         server.register_tools(calc);
 
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: Some(serde_json::json!(1)),
+        let request = Request::Single(Call::MethodCall(MethodCall {
+            jsonrpc: Some(Version::V2),
             method: "tools/list".to_string(),
-            params: None,
-        };
+            params: Params::None,
+            id: Id::Num(1),
+        }));
 
         let response = server.handle_request(request).await.unwrap();
-        assert!(response.result.is_some());
+        if let Response::Single(Output::Success(success)) = response {
+            let result: Value = success.result;
+            println!("Raw tools list JSON:\n{}", serde_json::to_string_pretty(&result).unwrap());
+            let tools = result.get("tools").unwrap().as_array().unwrap();
 
-        // print raw json
-        let tools = response.result.unwrap();
-        println!("Raw tools list JSON:\n{}", serde_json::to_string_pretty(&tools).unwrap());
-        let tools_array = tools.as_array().unwrap();
+            // Should have 4 calculator tools
+            assert_eq!(tools.len(), 4);
 
-        // Should have 4 calculator tools
-        assert_eq!(tools_array.len(), 4);
+            // Verify each tool's name and description
+            let tool_info: Vec<(&str, &str)> = tools.iter()
+                .map(|t| (
+                    t["name"].as_str().unwrap(),
+                    t["description"].as_str().unwrap()
+                ))
+                .collect();
 
-        // Verify each tool's name and description
-        let tool_info: Vec<(&str, &str)> = tools_array.iter()
-            .map(|t| (
-                t["name"].as_str().unwrap(),
-                t["description"].as_str().unwrap()
-            ))
-            .collect();
+            assert!(tool_info.contains(&("calculator_add", "Add two numbers")));
+            assert!(tool_info.contains(&("calculator_subtract", "Subtract two numbers")));
+            assert!(tool_info.contains(&("calculator_multiply", "Multiply two numbers")));
+            assert!(tool_info.contains(&("calculator_divide", "Divide two numbers")));
 
-        assert!(tool_info.contains(&("calculator_add", "Add two numbers")));
-        assert!(tool_info.contains(&("calculator_subtract", "Subtract two numbers")));
-        assert!(tool_info.contains(&("calculator_multiply", "Multiply two numbers")));
-        assert!(tool_info.contains(&("calculator_divide", "Divide two numbers")));
+            // Verify input schema for add function
+            let add_tool = tools.iter()
+                .find(|t| t["name"].as_str().unwrap() == "calculator_add")
+                .unwrap();
 
-        // Verify input schema for add function
-        let add_tool = tools_array.iter()
-            .find(|t| t["name"].as_str().unwrap() == "calculator_add")
-            .unwrap();
-
-        let schema = &add_tool["input_schema"];
-        assert_eq!(schema["type"], "object");
-        
-        let properties = schema["properties"].as_object().unwrap();
-        assert!(properties.contains_key("a"));
-        assert!(properties.contains_key("b"));
-        assert_eq!(properties["a"]["type"], "integer");
-        assert_eq!(properties["b"]["type"], "integer");
+            let schema = &add_tool["input_schema"];
+            assert_eq!(schema["type"], "object");
+            
+            let properties = schema["properties"].as_object().unwrap();
+            assert!(properties.contains_key("a"));
+            assert!(properties.contains_key("b"));
+            assert_eq!(properties["a"]["type"], "integer");
+            assert_eq!(properties["b"]["type"], "integer");
+        } else {
+            panic!("Expected successful response");
+        }
     }
 
     #[tokio::test]
