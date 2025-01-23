@@ -3,11 +3,12 @@ use jsonrpc_core::{Call, ErrorCode, Failure, Output, Params, Success, Version};
 use mcp_types::*;
 use std::collections::HashMap;
 use tracing::{debug, info, warn};
+use tokio::sync::Mutex;
 
 pub struct McpServer {
     name: String,
     version: String,
-    tools: HashMap<String, Box<dyn McpTool>>,
+    tools: Mutex<HashMap<String, Box<dyn McpTool>>>,
 }
 
 impl McpServer {
@@ -15,45 +16,47 @@ impl McpServer {
         Self {
             name: name.to_string(),
             version: version.to_string(),
-            tools: HashMap::new(),
+            tools: Mutex::new(HashMap::new()),
         }
     }
 
-    pub fn with_tool(&mut self, tool: impl McpTool + 'static) -> &mut Self {
+    pub async fn with_tool(&self, tool: impl McpTool + 'static) -> &Self {
         let tool_name = tool.name().to_string();
         info!(tool_name = %tool_name, "Registering tool");
-        self.tools.insert(tool_name, Box::new(tool));
+        self.tools.lock().await.insert(tool_name, Box::new(tool));
         self
     }
 
-    pub fn with_tools(&mut self, tools: Vec<Box<dyn McpTool>>) -> &mut Self {
+    pub async fn with_tools(&self, tools: Vec<Box<dyn McpTool>>) -> &Self {
+        let mut tools_lock = self.tools.lock().await;
         for tool in tools {
             let name = tool.name().to_string();
             info!(tool_name = %name, "Registering tool");
-            self.tools.insert(name, tool);
+            tools_lock.insert(name, tool);
         }
         self
     }
 
-    pub fn register_tool<T: McpTool + 'static>(&mut self, tool: T) {
+    pub async fn register_tool<T: McpTool + 'static>(&self, tool: T) {
         let tool_name = tool.name().to_string();
         info!(tool_name = %tool_name, "Registering tool");
-        self.tools.insert(tool_name, Box::new(tool));
+        self.tools.lock().await.insert(tool_name, Box::new(tool));
     }
 
-    pub fn register_tools<T: HasTools>(&mut self, provider: T)
+    pub async fn register_tools<T: HasTools>(&self, provider: T)
     where
         T::Tools: IntoIterator<Item = Box<dyn McpTool>>,
     {
+        let mut tools_lock = self.tools.lock().await;
         for tool in provider.tools() {
             let name = tool.name().to_string();
             info!(tool_name = %name, "Registering tool");
-            self.tools.insert(name, tool);
+            tools_lock.insert(name, tool);
         }
     }
 
     pub async fn handle_request(
-        &mut self,
+        &self,
         request: JsonRpcRequest,
     ) -> Result<JsonRpcResponse, McpError> {
         let (id, method, params) = match request {
@@ -75,8 +78,9 @@ impl McpServer {
         let response = match method.as_str() {
             "initialize" => {
                 info!("Processing initialize request");
+                let tools_lock = self.tools.lock().await;
                 let capabilities = ServerCapabilities {
-                    tools: self.tools.keys().map(|k| (k.clone(), true)).collect(),
+                    tools: tools_lock.keys().map(|k| (k.clone(), true)).collect(),
                 };
 
                 let result = InitializeResult {
@@ -93,7 +97,7 @@ impl McpServer {
                     server_name = %self.name,
                     server_version = %self.version,
                     protocol_version = %LATEST_PROTOCOL_VERSION,
-                    num_tools = %self.tools.len(),
+                    num_tools = %tools_lock.len(),
                     "Sending initialize response"
                 );
 
@@ -105,15 +109,12 @@ impl McpServer {
             }
             "tools/list" => {
                 info!("Processing tools/list request");
-                let tools: Vec<Tool> = self
-                    .tools
-                    .values()
-                    .map(|tool| Tool {
-                        name: tool.name().to_string(),
-                        description: tool.description().to_string(),
-                        input_schema: tool.input_schema(),
-                    })
-                    .collect();
+                let tools_lock = self.tools.lock().await;
+                let tools: Vec<Tool> = tools_lock.values().map(|tool| Tool {
+                    name: tool.name().to_string(),
+                    description: tool.description().to_string(),
+                    input_schema: tool.input_schema(),
+                }).collect();
 
                 let result = ListToolsResult {
                     tools,
@@ -154,7 +155,8 @@ impl McpServer {
                     "Executing tool"
                 );
 
-                let tool = self.tools.get(&request.name).ok_or_else(|| {
+                let tools_lock = self.tools.lock().await;
+                let tool = tools_lock.get(&request.name).ok_or_else(|| {
                     warn!(tool = %request.name, "Tool not found");
                     McpError::MethodNotFound
                 })?;

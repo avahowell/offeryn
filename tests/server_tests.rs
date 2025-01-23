@@ -3,6 +3,7 @@ use jsonrpc_core::{Call, Id, MethodCall, Output, Params, Version};
 use mcp_rs::{McpError, McpServer, McpTool};
 use mcp_types::*;
 use serde_json::{json, Value};
+use std::sync::Arc;
 
 // Mock tool for testing
 struct MockTool;
@@ -42,8 +43,8 @@ impl McpTool for MockTool {
 
 #[tokio::test]
 async fn test_tools_list() {
-    let mut server = McpServer::new("test-server", "1.0.0");
-    server.register_tool(MockTool);
+    let server = Arc::new(McpServer::new("test-server", "1.0.0"));
+    server.register_tool(MockTool).await;
 
     let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
         jsonrpc: Some(Version::V2),
@@ -68,8 +69,8 @@ async fn test_tools_list() {
 
 #[tokio::test]
 async fn test_tool_execution() {
-    let mut server = McpServer::new("test-server", "1.0.0");
-    server.register_tool(MockTool);
+    let server = Arc::new(McpServer::new("test-server", "1.0.0"));
+    server.register_tool(MockTool).await;
 
     let params = serde_json::Map::from_iter(vec![
         ("name".to_string(), json!("mock_tool")),
@@ -107,7 +108,7 @@ async fn test_tool_execution() {
 
 #[tokio::test]
 async fn test_unknown_tool() {
-    let mut server = McpServer::new("test-server", "1.0.0");
+    let server = Arc::new(McpServer::new("test-server", "1.0.0"));
 
     let params = serde_json::Map::from_iter(vec![
         ("name".to_string(), json!("non_existent_tool")),
@@ -127,7 +128,7 @@ async fn test_unknown_tool() {
 
 #[tokio::test]
 async fn test_invalid_method() {
-    let mut server = McpServer::new("test-server", "1.0.0");
+    let server = Arc::new(McpServer::new("test-server", "1.0.0"));
 
     let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
         jsonrpc: Some(Version::V2),
@@ -152,8 +153,8 @@ async fn test_invalid_method() {
 
 #[tokio::test]
 async fn test_initialize() {
-    let mut server = McpServer::new("test-server", "1.0.0");
-    server.register_tool(MockTool);
+    let server = Arc::new(McpServer::new("test-server", "1.0.0"));
+    server.register_tool(MockTool).await;
 
     let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
         jsonrpc: Some(Version::V2),

@@ -37,7 +37,7 @@ impl SseTransport {
         }
     }
 
-    pub fn create_router(server: Arc<tokio::sync::Mutex<McpServer>>) -> Router {
+    pub fn create_router(server: Arc<McpServer>) -> Router {
         info!("Creating SSE router");
         let state = Arc::new(Mutex::new(Self::new()));
 
@@ -56,7 +56,7 @@ impl SseTransport {
                 post(
                     |Query(params): Query<HashMap<String, String>>,
                      Extension(state): Extension<Arc<Mutex<SseTransport>>>,
-                     Extension(server): Extension<Arc<tokio::sync::Mutex<McpServer>>>,
+                     Extension(server): Extension<Arc<McpServer>>,
                      Json(request): Json<JsonRpcRequestWrapper>| async move {
                         let session_id = match params.get("sessionId") {
                             Some(id) => id,
@@ -163,7 +163,7 @@ impl SseTransport {
     async fn message_handler(
         session_id: String,
         state: Arc<Mutex<SseTransport>>,
-        server: Arc<tokio::sync::Mutex<McpServer>>,
+        server: Arc<McpServer>,
         request: Request,
     ) -> Result<Json<Response>, StatusCode> {
         // Get the sender from the state
@@ -190,7 +190,6 @@ impl SseTransport {
         };
 
         // Process request with server
-        let mut server = server.lock().await;
         let response = server.handle_request(request).await.map_err(|e| {
             error!(
                 session_id = %session_id,
@@ -283,11 +282,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_calculator() {
-        let mut server = McpServer::new("test-calculator", "1.0.0");
+        let server = Arc::new(McpServer::new("test-calculator", "1.0.0"));
         let calc = Calculator::default();
 
         // Register calculator tools
-        server.register_tools(calc);
+        server.register_tools(calc).await;
 
         // Test addition
         let request = Request::Single(Call::MethodCall(MethodCall {
@@ -371,7 +370,9 @@ mod tests {
             let result: Value = success.result;
             let content = result.get("content").unwrap().as_array().unwrap();
             let text = content[0].get("text").unwrap().as_str().unwrap();
+            let is_error = result.get("isError").unwrap().as_bool().unwrap();
             assert_eq!(text, "Cannot divide by zero");
+            assert!(is_error);
         } else {
             panic!("Expected successful response");
         }
@@ -381,7 +382,7 @@ mod tests {
     async fn test_sse_transport() {
         // Create a test server
         let server = McpServer::new("test-server", "1.0.0");
-        let server = Arc::new(tokio::sync::Mutex::new(server));
+        let server = Arc::new(server);
 
         // Create the router
         let _app = SseTransport::create_router(server);

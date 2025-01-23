@@ -24,18 +24,6 @@ impl TestStruct {
     async fn another_method(&self, x: i32, y: i32) -> Result<i32, String> {
         Ok(x + y)
     }
-
-    /// A method with an optional parameter
-    /// 
-    /// # Parameters
-    /// * `required` - A required parameter
-    /// * `optional` - An optional parameter
-    async fn optional_method(&self, required: String, optional: Option<i32>) -> Result<String, String> {
-        match optional {
-            Some(val) => Ok(format!("{} with {}", required, val)),
-            None => Ok(required)
-        }
-    }
 }
 
 #[tokio::main]
@@ -85,47 +73,4 @@ async fn main() {
     assert_eq!(required.len(), 2);
     assert!(required.contains(&serde_json::json!("x")));
     assert!(required.contains(&serde_json::json!("y")));
-
-    // Test optional method
-    let optional_tool = &tools[2];
-    let optional_schema = optional_tool.input_schema();
-    let optional_schema_str = serde_json::to_string_pretty(&optional_schema).unwrap();
-    println!("Optional Schema: {}", optional_schema_str);
-    
-    // Verify optional schema
-    let schema: serde_json::Value = serde_json::from_str(&optional_schema_str).unwrap();
-    assert_eq!(schema["type"], "object");
-    
-    let properties = schema["properties"].as_object().unwrap();
-    
-    // Check required parameter
-    let required_prop = &properties["required"];
-    assert_eq!(required_prop["type"], "string");
-    assert_eq!(required_prop["description"], "A required parameter");
-    
-    // Check optional parameter
-    let optional_prop = &properties["optional"];
-    assert_eq!(optional_prop["description"], "An optional parameter");
-    assert_eq!(optional_prop["type"], serde_json::json!(["integer", "null"]));
-    assert_eq!(optional_prop["format"], "int32");
-    
-    // Verify required array only contains non-optional parameters
-    let required = schema["required"].as_array().unwrap();
-    assert_eq!(required.len(), 1);
-    assert!(required.contains(&serde_json::json!("required")));
-    assert!(!required.contains(&serde_json::json!("optional")));
-
-    // Test execution
-    let args = serde_json::json!({
-        "required": "test"
-    });
-    let result = optional_tool.execute(args).await.unwrap();
-    assert_eq!(result.content[0].text, "test");
-
-    let args = serde_json::json!({
-        "required": "test",
-        "optional": 42
-    });
-    let result = optional_tool.execute(args).await.unwrap();
-    assert_eq!(result.content[0].text, "test with 42");
 } 

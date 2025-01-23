@@ -2,7 +2,6 @@ use mcp_derive::mcp_tool;
 use mcp_rs::{McpServer, SseTransport};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 
 /// A simple calculator that can perform basic arithmetic operations
@@ -12,18 +11,18 @@ struct Calculator {}
 #[mcp_tool]
 impl Calculator {
     /// Add two numbers
-    async fn add(&self, a: i64, b: i64) -> Result<i64, String> {
-        Ok(a + b)
+    async fn add(&self, a: i64, b: i64) -> i64 {
+        a + b
     }
 
     /// Subtract two numbers
-    async fn subtract(&self, a: i64, b: i64) -> Result<i64, String> {
-        Ok(a - b)
+    async fn subtract(&self, a: i64, b: i64) -> i64 {
+        a - b
     }
 
     /// Multiply two numbers
-    async fn multiply(&self, a: i64, b: i64) -> Result<i64, String> {
-        Ok(a * b)
+    async fn multiply(&self, a: i64, b: i64) -> i64 {
+        a * b
     }
 
     /// Divide two numbers
@@ -51,12 +50,11 @@ async fn main() {
         .init();
 
     // Create a new server instance
-    let mut server = McpServer::new("calculator", "1.0.0");
+    let server = Arc::new(McpServer::new("calculator", "1.0.0"));
 
     // Register the calculator tools
-    server.register_tools(Calculator::default());
+    server.register_tools(Calculator::default()).await;
 
-    let server = Arc::new(Mutex::new(server));
 
     // Create the router
     let app = SseTransport::create_router(server);
