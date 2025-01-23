@@ -1,8 +1,8 @@
-use mcp_types::*;
-use mcp_rs::{McpServer, McpTool, McpError};
 use async_trait::async_trait;
-use serde_json::{Value, json};
-use jsonrpc_core::{Call, MethodCall, Id, Params, Version, Output, ErrorCode};
+use jsonrpc_core::{Call, Id, MethodCall, Output, Params, Version};
+use mcp_rs::{McpError, McpServer, McpTool};
+use mcp_types::*;
+use serde_json::{json, Value};
 
 // Mock tool for testing
 struct MockTool;
@@ -53,7 +53,7 @@ async fn test_tools_list() {
     }));
 
     let response = server.handle_request(request).await.unwrap();
-    
+
     match response {
         JsonRpcResponse::Single(Output::Success(success)) => {
             let result: ListToolsResult = serde_json::from_value(success.result).unwrap();
@@ -73,9 +73,12 @@ async fn test_tool_execution() {
 
     let params = serde_json::Map::from_iter(vec![
         ("name".to_string(), json!("mock_tool")),
-        ("arguments".to_string(), json!({
-            "echo": "Hello, World!"
-        })),
+        (
+            "arguments".to_string(),
+            json!({
+                "echo": "Hello, World!"
+            }),
+        ),
     ]);
 
     let request = JsonRpcRequest::Single(Call::MethodCall(MethodCall {
@@ -86,7 +89,7 @@ async fn test_tool_execution() {
     }));
 
     let response = server.handle_request(request).await.unwrap();
-    
+
     match response {
         JsonRpcResponse::Single(Output::Success(success)) => {
             let result: CallToolResult = serde_json::from_value(success.result).unwrap();
@@ -134,10 +137,13 @@ async fn test_invalid_method() {
     }));
 
     let response = server.handle_request(request).await.unwrap();
-    
+
     match response {
         JsonRpcResponse::Single(Output::Failure(failure)) => {
-            assert_eq!(failure.error.code.code(), jsonrpc_core::ErrorCode::MethodNotFound.code());
+            assert_eq!(
+                failure.error.code.code(),
+                jsonrpc_core::ErrorCode::MethodNotFound.code()
+            );
             assert_eq!(failure.error.message, "Method not found");
         }
         _ => panic!("Expected failure response"),
@@ -157,7 +163,7 @@ async fn test_initialize() {
     }));
 
     let response = server.handle_request(request).await.unwrap();
-    
+
     match response {
         JsonRpcResponse::Single(Output::Success(success)) => {
             let result: InitializeResult = serde_json::from_value(success.result).unwrap();

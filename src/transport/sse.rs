@@ -1,22 +1,22 @@
 use crate::McpServer;
+use async_stream::stream;
 use axum::{
-    routing::{get, post},
-    Router, Extension,
-    response::sse::{Event, Sse},
     extract::{Json, Query},
     http::StatusCode,
+    response::sse::{Event, Sse},
+    routing::{get, post},
+    Extension, Router,
 };
 use futures::stream::Stream;
+use jsonrpc_core::{Call, Id, MethodCall, Output, Params, Request, Response, Version};
+use std::convert::Infallible;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc;
+use tracing::{error, info, warn};
 use uuid::Uuid;
-use std::convert::Infallible;
-use async_stream::stream;
-use tracing::{info, warn, error};
-use jsonrpc_core::{Call, Output, Request, Response, Id, Version, MethodCall, Params};
 
 #[derive(serde::Deserialize)]
 struct JsonRpcRequestWrapper {
@@ -40,47 +40,58 @@ impl SseTransport {
     pub fn create_router(server: Arc<tokio::sync::Mutex<McpServer>>) -> Router {
         info!("Creating SSE router");
         let state = Arc::new(Mutex::new(Self::new()));
-        
+
         Router::new()
-            .route("/sse", get(|Extension(state): Extension<Arc<Mutex<SseTransport>>>| async move {
-                info!("New SSE connection request received");
-                Self::sse_handler(state).await
-            }))
-            .route("/message", post(|
-                Query(params): Query<HashMap<String, String>>,
-                Extension(state): Extension<Arc<Mutex<SseTransport>>>,
-                Extension(server): Extension<Arc<tokio::sync::Mutex<McpServer>>>,
-                Json(request): Json<JsonRpcRequestWrapper>| async move {
-                let session_id = match params.get("sessionId") {
-                    Some(id) => id,
-                    None => {
-                        error!("No sessionId provided in query parameters");
-                        return Err(StatusCode::BAD_REQUEST);
-                    }
-                };
-                
-                info!(
-                    session_id = %session_id,
-                    "Received JSON-RPC request"
-                );
-
-                let params = match request.params {
-                    Some(p) => match p.as_object() {
-                        Some(obj) => Params::Map(obj.clone()),
-                        None => Params::None,
+            .route(
+                "/sse",
+                get(
+                    |Extension(state): Extension<Arc<Mutex<SseTransport>>>| async move {
+                        info!("New SSE connection request received");
+                        Self::sse_handler(state).await
                     },
-                    None => Params::None,
-                };
+                ),
+            )
+            .route(
+                "/message",
+                post(
+                    |Query(params): Query<HashMap<String, String>>,
+                     Extension(state): Extension<Arc<Mutex<SseTransport>>>,
+                     Extension(server): Extension<Arc<tokio::sync::Mutex<McpServer>>>,
+                     Json(request): Json<JsonRpcRequestWrapper>| async move {
+                        let session_id = match params.get("sessionId") {
+                            Some(id) => id,
+                            None => {
+                                error!("No sessionId provided in query parameters");
+                                return Err(StatusCode::BAD_REQUEST);
+                            }
+                        };
 
-                let request = Request::Single(Call::MethodCall(MethodCall {
-                    jsonrpc: Some(Version::V2),
-                    method: request.method,
-                    params,
-                    id: request.id.map_or(Id::Null, |id| Id::Num(id.as_u64().unwrap_or(0))),
-                }));
+                        info!(
+                            session_id = %session_id,
+                            "Received JSON-RPC request"
+                        );
 
-                Self::message_handler(session_id.clone(), state, server, request).await
-            }))
+                        let params = match request.params {
+                            Some(p) => match p.as_object() {
+                                Some(obj) => Params::Map(obj.clone()),
+                                None => Params::None,
+                            },
+                            None => Params::None,
+                        };
+
+                        let request = Request::Single(Call::MethodCall(MethodCall {
+                            jsonrpc: Some(Version::V2),
+                            method: request.method,
+                            params,
+                            id: request
+                                .id
+                                .map_or(Id::Null, |id| Id::Num(id.as_u64().unwrap_or(0))),
+                        }));
+
+                        Self::message_handler(session_id.clone(), state, server, request).await
+                    },
+                ),
+            )
             .fallback(|req: axum::http::Request<axum::body::Body>| async move {
                 error!(
                     method = %req.method(),
@@ -98,12 +109,12 @@ impl SseTransport {
     ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
         let (tx, mut rx) = mpsc::channel(100);
         let session_id = Uuid::new_v4().to_string();
-        
+
         info!(
             session_id = %session_id,
             "New SSE connection established"
         );
-        
+
         {
             let mut state = state.lock().unwrap();
             state.connections.insert(session_id.clone(), tx);
@@ -113,7 +124,7 @@ impl SseTransport {
                 "Added new SSE connection"
             );
         }
-        
+
         let stream = stream! {
             info!(
                 session_id = %session_id,
@@ -124,7 +135,7 @@ impl SseTransport {
             yield Ok(Event::default()
                 .event("endpoint")
                 .data(endpoint_url));
-            
+
             info!(
                 session_id = %session_id,
                 "Starting event stream"
@@ -145,7 +156,7 @@ impl SseTransport {
         Sse::new(stream).keep_alive(
             axum::response::sse::KeepAlive::new()
                 .interval(std::time::Duration::from_secs(1))
-                .text("keep-alive-text")
+                .text("keep-alive-text"),
         )
     }
 
@@ -169,57 +180,54 @@ impl SseTransport {
                 session_id = %session_id,
                 "Found existing connection"
             );
-            state.connections.get(&session_id).cloned()
-                .ok_or_else(|| {
-                    error!(
-                        session_id = %session_id,
-                        "Failed to get connection sender"
-                    );
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?
+            state.connections.get(&session_id).cloned().ok_or_else(|| {
+                error!(
+                    session_id = %session_id,
+                    "Failed to get connection sender"
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
         };
 
         // Process request with server
         let mut server = server.lock().await;
-        let response = server.handle_request(request).await
-            .map_err(|e| {
-                error!(
-                    session_id = %session_id,
-                    error = %e,
-                    "Server request handler failed"
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+        let response = server.handle_request(request).await.map_err(|e| {
+            error!(
+                session_id = %session_id,
+                error = %e,
+                "Server request handler failed"
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
         // Send response through SSE channel if it's a successful response
         if let Response::Single(Output::Success(_)) = &response {
             // Ensure we send a proper JSON-RPC message
-            let event = Event::default()
-                .event("message")
-                .data(serde_json::to_string(&response).map_err(|e| {
-                    error!(
-                        session_id = %session_id,
-                        error = %e,
-                        "Failed to serialize response"
-                    );
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?);
-                
+            let event =
+                Event::default()
+                    .event("message")
+                    .data(serde_json::to_string(&response).map_err(|e| {
+                        error!(
+                            session_id = %session_id,
+                            error = %e,
+                            "Failed to serialize response"
+                        );
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    })?);
+
             info!(
                 session_id = %session_id,
                 "Sending JSON-RPC response through SSE"
             );
-                
-            tx.send(Ok(event))
-                .await
-                .map_err(|e| {
-                    error!(
-                        session_id = %session_id,
-                        error = %e,
-                        "Failed to send response through SSE channel"
-                    );
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
+
+            tx.send(Ok(event)).await.map_err(|e| {
+                error!(
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to send response through SSE channel"
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
         } else {
             info!(
                 session_id = %session_id,
@@ -238,34 +246,35 @@ impl SseTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{McpServer, CallToolRequest};
+    use crate::McpServer;
     use mcp_derive::mcp_tool;
     use serde_json::{json, Value};
-    use async_trait::async_trait;
 
     /// A simple calculator that can perform basic arithmetic operations
+    #[derive(Default)]
+    struct Calculator {}
+
     #[mcp_tool]
-    #[async_trait::async_trait]
-    trait Calculator {
+    impl Calculator {
         /// Add two numbers
-        async fn add(&self, a: i64, b: i64) -> i64 {
-            a + b
+        async fn add(&self, a: i64, b: i64) -> Result<i64, String> {
+            Ok(a + b)
         }
 
         /// Subtract two numbers
-        async fn subtract(&self, a: i64, b: i64) -> i64 {
-            a - b
+        async fn subtract(&self, a: i64, b: i64) -> Result<i64, String> {
+            Ok(a - b)
         }
 
         /// Multiply two numbers
-        async fn multiply(&self, a: i64, b: i64) -> i64 {
-            a * b
+        async fn multiply(&self, a: i64, b: i64) -> Result<i64, String> {
+            Ok(a * b)
         }
 
         /// Divide two numbers
-        async fn divide(&self, a: i64, b: i64) -> Result<f64, &'static str> {
+        async fn divide(&self, a: i64, b: i64) -> Result<f64, String> {
             if b == 0 {
-                Err("Cannot divide by zero")
+                Err("Cannot divide by zero".to_string())
             } else {
                 Ok(a as f64 / b as f64)
             }
@@ -275,8 +284,8 @@ mod tests {
     #[tokio::test]
     async fn test_calculator() {
         let mut server = McpServer::new("test-calculator", "1.0.0");
-        let calc = CalculatorImpl::default();
-        
+        let calc = Calculator::default();
+
         // Register calculator tools
         server.register_tools(calc);
 
@@ -284,16 +293,21 @@ mod tests {
         let request = Request::Single(Call::MethodCall(MethodCall {
             jsonrpc: Some(Version::V2),
             method: "tools/call".to_string(),
-            params: Params::Map(json!({
-                "name": "calculator_add",
-                "arguments": {
-                    "a": 2,
-                    "b": 3
-                }
-            }).as_object().unwrap().clone()),
+            params: Params::Map(
+                json!({
+                    "name": "calculator_add",
+                    "arguments": {
+                        "a": 2,
+                        "b": 3
+                    }
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
             id: Id::Num(1),
         }));
-        
+
         let response = server.handle_request(request).await.unwrap();
         if let Response::Single(Output::Success(success)) = response {
             let result: Value = success.result;
@@ -308,16 +322,21 @@ mod tests {
         let request = Request::Single(Call::MethodCall(MethodCall {
             jsonrpc: Some(Version::V2),
             method: "tools/call".to_string(),
-            params: Params::Map(json!({
-                "name": "calculator_divide",
-                "arguments": {
-                    "a": 10,
-                    "b": 2
-                }
-            }).as_object().unwrap().clone()),
+            params: Params::Map(
+                json!({
+                    "name": "calculator_divide",
+                    "arguments": {
+                        "a": 10,
+                        "b": 2
+                    }
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
             id: Id::Num(2),
         }));
-        
+
         let response = server.handle_request(request).await.unwrap();
         if let Response::Single(Output::Success(success)) = response {
             let result: Value = success.result;
@@ -332,16 +351,21 @@ mod tests {
         let request = Request::Single(Call::MethodCall(MethodCall {
             jsonrpc: Some(Version::V2),
             method: "tools/call".to_string(),
-            params: Params::Map(json!({
-                "name": "calculator_divide",
-                "arguments": {
-                    "a": 1,
-                    "b": 0
-                }
-            }).as_object().unwrap().clone()),
+            params: Params::Map(
+                json!({
+                    "name": "calculator_divide",
+                    "arguments": {
+                        "a": 1,
+                        "b": 0
+                    }
+                })
+                .as_object()
+                .unwrap()
+                .clone(),
+            ),
             id: Id::Num(3),
         }));
-        
+
         let response = server.handle_request(request).await.unwrap();
         if let Response::Single(Output::Success(success)) = response {
             let result: Value = success.result;
@@ -356,9 +380,9 @@ mod tests {
     #[tokio::test]
     async fn test_sse_transport() {
         // Create a test server
-        let mut server = McpServer::new("test-server", "1.0.0");
+        let server = McpServer::new("test-server", "1.0.0");
         let server = Arc::new(tokio::sync::Mutex::new(server));
-        
+
         // Create the router
         let _app = SseTransport::create_router(server);
     }

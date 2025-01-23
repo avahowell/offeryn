@@ -1,131 +1,189 @@
-use proc_macro::TokenStream;
-use quote::{quote, format_ident, ToTokens};
-use syn::{
-    parse_macro_input,
-    ItemImpl,
-    Type,
-    ReturnType,
-    Pat,
-    Attribute,
-    Meta,
-    FnArg,
-    ImplItem,
-    Expr,
-    Lit,
-};
 use convert_case::{Case, Casing};
+use proc_macro::TokenStream;
+use quote::{format_ident, quote};
+use syn::{
+    parse_macro_input, Attribute, Expr, FnArg, ImplItem, ItemImpl, Lit, Meta, Pat, ReturnType, Type,
+};
 
 fn extract_doc_string(attrs: &[Attribute]) -> String {
-    attrs.iter()
+    attrs
+        .iter()
         .filter(|attr| attr.path().is_ident("doc"))
-        .filter_map(|attr| {
-            if let Meta::NameValue(meta) = &attr.meta {
-                if let Expr::Lit(expr_lit) = &meta.value {
-                    if let Lit::Str(lit_str) = &expr_lit.lit {
-                        Some(lit_str.value().trim().to_string())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
+        .filter_map(|attr| match &attr.meta {
+            Meta::NameValue(meta) => match &meta.value {
+                Expr::Lit(expr_lit) => match &expr_lit.lit {
+                    Lit::Str(lit_str) => Some(lit_str.value().trim().to_string()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
         })
         .collect::<Vec<_>>()
         .join("\n")
 }
 
 fn get_type_schema(ty: &Type) -> proc_macro2::TokenStream {
-    if let Type::Path(type_path) = ty {
-        if let Some(segment) = type_path.path.segments.last() {
-            if segment.ident == "Result" {
-                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                    if let Some(syn::GenericArgument::Type(ok_type)) = args.args.first() {
-                        return get_type_schema(ok_type);
+    match ty {
+        Type::Path(type_path) => {
+            if let Some(segment) = type_path.path.segments.last() {
+                if segment.ident == "Result" {
+                    if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                        if let Some(syn::GenericArgument::Type(ok_type)) = args.args.first() {
+                            return get_type_schema(ok_type);
+                        }
                     }
                 }
             }
         }
+        _ => {}
     }
     quote! {
         <#ty as schemars::JsonSchema>::json_schema(&mut schemars::gen::SchemaGenerator::default())
     }
 }
 
+fn is_optional_type(ty: &Type) -> bool {
+    matches!(ty, Type::Path(type_path) if type_path.path.segments.last()
+        .map_or(false, |segment| segment.ident == "Option"))
+}
+
+fn extract_param_doc(docs: &str, param_name: &str) -> String {
+    docs.lines()
+        .find(|line| {
+            line.contains(&format!("`{}`", param_name))
+                || line.contains(&format!("* {}", param_name))
+                || line.contains(&format!("- {}", param_name))
+        })
+        .map(|line| {
+            let line = line.trim().trim_start_matches(['*', '-']).trim();
+            let line = if let Some(idx) = line.find(&format!("`{}`", param_name)) {
+                &line[idx..]
+            } else if let Some(idx) = line.find(param_name) {
+                &line[idx..]
+            } else {
+                line
+            };
+            line.trim_start_matches('`')
+                .trim_start_matches(param_name)
+                .trim_start_matches('`')
+                .trim_start_matches('-')
+                .trim_start_matches(" - ")
+                .trim()
+                .to_string()
+        })
+        .unwrap_or_default()
+}
+
+fn generate_param_schema(
+    param_type: &Type,
+    param_name: &str,
+    param_doc: &str,
+    is_optional: bool,
+) -> proc_macro2::TokenStream {
+    let schema = get_type_schema(param_type);
+    let param_name_str = param_name.to_string();
+
+    quote! {
+        let schema = #schema;
+        if let schemars::schema::Schema::Object(mut obj) = schema {
+            if let Some(meta) = &mut obj.metadata {
+                meta.description = Some(#param_doc.to_string());
+            } else {
+                obj.metadata = Some(Box::new(schemars::schema::Metadata {
+                    description: Some(#param_doc.to_string()),
+                    ..Default::default()
+                }));
+            }
+            properties.insert(#param_name_str.to_string(), schemars::schema::Schema::Object(obj));
+        } else {
+            properties.insert(#param_name_str.to_string(), schema);
+        }
+        if !#is_optional {
+            required.push(#param_name_str.to_string());
+        }
+    }
+}
+
+fn generate_param_deserialization(param_name: &str, is_optional: bool) -> proc_macro2::TokenStream {
+    let name_str = param_name.to_string();
+    if is_optional {
+        quote! {
+            match args.get(#name_str) {
+                Some(v) => Some(serde_json::from_value(v.clone()).map_err(|e| e.to_string())?),
+                None => None
+            }
+        }
+    } else {
+        quote! {
+            serde_json::from_value(
+                args.get(#name_str)
+                    .ok_or_else(|| format!("Missing required parameter: {}", #name_str))?
+                    .clone()
+            ).map_err(|e| e.to_string())?
+        }
+    }
+}
+
 #[proc_macro_attribute]
 pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemImpl);
-    let ty = &input.self_ty;
-    let vis = quote!(pub);  // impl blocks don't have visibility
-    
+    let ty = &*input.self_ty;
+
+    let type_name = if let Type::Path(type_path) = ty {
+        type_path
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident.to_string())
+            .expect("Expected a type with at least one segment")
+    } else {
+        panic!("Expected a path type")
+    };
+
     let mut tool_impls = Vec::new();
     let mut tool_names = Vec::new();
-    
+
     for item in &input.items {
         if let ImplItem::Fn(method) = item {
             let method_name = &method.sig.ident;
-            let tool_name = format!("{}_{}", ty.to_token_stream().to_string().to_case(Case::Snake), method_name);
-            let tool_struct_name = format_ident!("{}{}Tool", ty.to_token_stream().to_string().to_case(Case::Pascal), method_name.to_string().to_case(Case::Pascal));
+            let tool_name = format!("{}_{}", type_name.to_case(Case::Snake), method_name);
+            let tool_struct_name = format_ident!(
+                "{}{}Tool",
+                type_name.to_case(Case::Pascal),
+                method_name.to_string().to_case(Case::Pascal)
+            );
             tool_names.push(tool_struct_name.clone());
-            
-            println!("Processing method: {}", method_name);
-            println!("Method attributes: {:#?}", method.attrs);
-            
+
             let docs = extract_doc_string(&method.attrs);
-            println!("Final docs for {}: {:?}", method_name, docs);
-            
+
             let mut param_schemas = Vec::new();
-            let mut param_names = Vec::new();
-            
+            let mut param_desers = Vec::new();
+
             for param in &method.sig.inputs {
                 if let FnArg::Typed(pat_type) = param {
                     if let Pat::Ident(param_name) = &*pat_type.pat {
                         if param_name.ident != "self" {
                             let param_type = &*pat_type.ty;
-                            let param_doc = docs.lines()
-                                .find(|line| line.contains(&format!("* `{}`", param_name.ident)))
-                                .unwrap_or("")
-                                .trim()
-                                .trim_start_matches(&format!("* `{}`", param_name.ident))
-                                .trim_start_matches('-')
-                                .trim_start_matches(" - ")
-                                .trim();
-                            
-                            let param_name_str = param_name.ident.to_string();
-                            param_names.push(param_name.ident.clone());
-                            
-                            let schema = get_type_schema(param_type);
-                            param_schemas.push(quote! {
-                                let schema = #schema;
-                                if let schemars::schema::Schema::Object(mut obj) = schema {
-                                    if let Some(meta) = &mut obj.metadata {
-                                        meta.description = Some(#param_doc.to_string());
-                                    } else {
-                                        obj.metadata = Some(Box::new(schemars::schema::Metadata {
-                                            description: Some(#param_doc.to_string()),
-                                            ..Default::default()
-                                        }));
-                                    }
-                                    properties.insert(#param_name_str.to_string(), schemars::schema::Schema::Object(obj));
-                                } else {
-                                    properties.insert(#param_name_str.to_string(), schema);
-                                }
-                                required.push(#param_name_str.to_string());
-                            });
+                            let name_str = param_name.ident.to_string();
+                            let is_optional = is_optional_type(param_type);
+                            let param_doc = extract_param_doc(&docs, &name_str);
+
+                            param_schemas.push(generate_param_schema(
+                                param_type,
+                                &name_str,
+                                &param_doc,
+                                is_optional,
+                            ));
+                            param_desers
+                                .push(generate_param_deserialization(&name_str, is_optional));
                         }
                     }
                 }
             }
-            
-            let param_deserialization = param_names.iter().map(|name| {
-                let name_str = name.to_string();
-                quote! { serde_json::from_value(args[#name_str].clone()).map_err(|e| e.to_string())? }
-            });
-            
+
             let is_result = matches!(&method.sig.output, ReturnType::Type(_, ty) if matches!(ty.as_ref(), Type::Path(p) if p.path.segments.last().map_or(false, |s| s.ident == "Result")));
-            
+
             let result_handling = if is_result {
                 quote! {
                     match result {
@@ -156,8 +214,8 @@ pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     })
                 }
             };
-            
-            let execute_impl = if param_names.is_empty() {
+
+            let execute_impl = if param_desers.is_empty() {
                 quote! {
                     let args = args.as_object().ok_or("Expected object")?;
                     if !args.is_empty() {
@@ -169,12 +227,12 @@ pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
             } else {
                 quote! {
                     let args = args.as_object().ok_or("Expected object")?;
-                    let result = self.inner.#method_name(#(#param_deserialization),*).await;
+                    let result = self.inner.#method_name(#(#param_desers),*).await;
                     #result_handling
                 }
             };
-            
-            let schema_impl = if param_names.is_empty() {
+
+            let schema_impl = if param_schemas.is_empty() {
                 quote! {
                     serde_json::json!({
                         "type": "object",
@@ -197,18 +255,19 @@ pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
             };
-            
+
             let tool_impl = quote! {
-                #vis struct #tool_struct_name {
+                #[doc(hidden)]
+                pub struct #tool_struct_name {
                     inner: std::sync::Arc<#ty>,
                 }
-                
+
                 impl #tool_struct_name {
-                    #vis fn new(inner: std::sync::Arc<#ty>) -> Self {
+                    pub fn new(inner: std::sync::Arc<#ty>) -> Self {
                         Self { inner }
                     }
                 }
-                
+
                 #[async_trait::async_trait]
                 impl mcp_types::McpTool for #tool_struct_name {
                     fn name(&self) -> &str { #tool_name }
@@ -219,14 +278,14 @@ pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
             };
-            
+
             tool_impls.push(tool_impl);
         }
     }
-    
+
     TokenStream::from(quote! {
         #input
-        
+
         impl mcp_types::HasTools for #ty {
             type Tools = Vec<Box<dyn mcp_types::McpTool>>;
             fn tools(self) -> Self::Tools {
@@ -236,7 +295,7 @@ pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 ]
             }
         }
-        
+
         #(#tool_impls)*
     })
 }

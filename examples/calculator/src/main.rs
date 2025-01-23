@@ -1,9 +1,9 @@
 use mcp_derive::mcp_tool;
 use mcp_rs::{McpServer, SseTransport};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing_subscriber::{EnvFilter};
-use std::net::SocketAddr;
+use tracing_subscriber::EnvFilter;
 
 /// A simple calculator that can perform basic arithmetic operations
 #[derive(Default, Clone)]
@@ -42,7 +42,7 @@ async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("debug,mcp_rs=debug,tower_http=debug"))
+                .unwrap_or_else(|_| EnvFilter::new("debug,mcp_rs=debug,tower_http=debug")),
         )
         .with_target(true)
         .with_thread_ids(true)
@@ -52,10 +52,10 @@ async fn main() {
 
     // Create a new server instance
     let mut server = McpServer::new("calculator", "1.0.0");
-    
+
     // Register the calculator tools
     server.register_tools(Calculator::default());
-    
+
     let server = Arc::new(Mutex::new(server));
 
     // Create the router
@@ -65,7 +65,8 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("Server running on http://{}", addr);
     println!("Try calling the calculator tools with:");
-    println!(r#"# First get a connection ID:
+    println!(
+        r#"# First get a connection ID:
 curl http://localhost:3000/sse
 
 # Then initialize the connection:
@@ -82,9 +83,10 @@ curl -X POST http://localhost:3000/message?sessionId=$SESSION_ID \
 curl -X POST http://localhost:3000/message?sessionId=$SESSION_ID \
     -H "Content-Type: application/json" \
     -d '{{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{{"name":"calculator_multiply","arguments":{{"a":4,"b":5}}}}}}'
-"#);
+"#
+    );
 
     // Start the server
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
-} 
+}

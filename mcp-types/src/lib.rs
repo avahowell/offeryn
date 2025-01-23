@@ -1,8 +1,11 @@
+use async_trait::async_trait;
+pub use jsonrpc_core::{
+    Error as JsonRpcError, Id, Params, Request as JsonRpcRequest, Response as JsonRpcResponse,
+    Version,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use async_trait::async_trait;
 use std::collections::HashMap;
-pub use jsonrpc_core::{Request as JsonRpcRequest, Response as JsonRpcResponse, Error as JsonRpcError, Version, Id, Params};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolContent {
@@ -27,21 +30,6 @@ pub trait McpTool: Send + Sync {
 pub trait HasTools {
     type Tools: IntoIterator<Item = Box<dyn McpTool>>;
     fn tools(self) -> Self::Tools;
-}
-
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,13 +80,13 @@ pub struct InitializeResult {
     /// This may not match the version that the client requested.
     /// If the client cannot support this version, it MUST disconnect.
     pub protocol_version: String,
-    
+
     /// The server's capabilities
     pub capabilities: ServerCapabilities,
-    
+
     /// Information about the server implementation
     pub server_info: ServerInfo,
-    
+
     /// Optional instructions for using the server
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
@@ -119,7 +107,7 @@ pub struct JsonRpcMessage<T> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InitializeRequest {
-    pub method: String,  // Will be "initialize"
+    pub method: String, // Will be "initialize"
     pub params: InitializeParams,
 }
 
@@ -128,7 +116,7 @@ pub struct InitializeRequest {
 pub struct ListToolsResult {
     /// Array of available tools
     pub tools: Vec<Tool>,
-    
+
     /// Optional pagination token for getting next page of results
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_page_token: Option<String>,
@@ -139,10 +127,10 @@ pub struct ListToolsResult {
 pub struct Tool {
     /// Name of the tool
     pub name: String,
-    
+
     /// Description of what the tool does
     pub description: String,
-    
+
     /// JSON Schema describing the tool's input parameters
     pub input_schema: Value, // Using serde_json::Value for the JSON Schema object
 }
@@ -168,16 +156,13 @@ pub struct CallToolResult {
 pub enum Content {
     #[serde(rename = "text")]
     Text { text: String },
-    
+
     #[serde(rename = "image")]
-    Image { 
+    Image {
         url: String,
         mime_type: Option<String>,
     },
-    
+
     #[serde(rename = "resource")]
-    EmbeddedResource {
-        uri: String,
-        name: Option<String>,
-    }
+    EmbeddedResource { uri: String, name: Option<String> },
 }

@@ -1,8 +1,8 @@
 use crate::McpError;
+use jsonrpc_core::{Call, ErrorCode, Failure, Output, Params, Success, Version};
 use mcp_types::*;
 use std::collections::HashMap;
-use tracing::{info, debug, warn};
-use jsonrpc_core::{Params, Success, Output, Failure, Version, Call, ErrorCode};
+use tracing::{debug, info, warn};
 
 pub struct McpServer {
     name: String,
@@ -43,7 +43,7 @@ impl McpServer {
 
     pub fn register_tools<T: HasTools>(&mut self, provider: T)
     where
-        T::Tools: IntoIterator<Item = Box<dyn McpTool>>
+        T::Tools: IntoIterator<Item = Box<dyn McpTool>>,
     {
         for tool in provider.tools() {
             let name = tool.name().to_string();
@@ -52,7 +52,10 @@ impl McpServer {
         }
     }
 
-    pub async fn handle_request(&mut self, request: JsonRpcRequest) -> Result<JsonRpcResponse, McpError> {
+    pub async fn handle_request(
+        &mut self,
+        request: JsonRpcRequest,
+    ) -> Result<JsonRpcResponse, McpError> {
         let (id, method, params) = match request {
             JsonRpcRequest::Single(Call::MethodCall(call)) => {
                 debug!(
@@ -62,7 +65,7 @@ impl McpServer {
                     "Received JSON-RPC request"
                 );
                 (call.id, call.method, call.params)
-            },
+            }
             _ => {
                 warn!("Invalid request format - expected MethodCall");
                 return Err(McpError::InvalidRequest);
@@ -102,7 +105,9 @@ impl McpServer {
             }
             "tools/list" => {
                 info!("Processing tools/list request");
-                let tools: Vec<Tool> = self.tools.values()
+                let tools: Vec<Tool> = self
+                    .tools
+                    .values()
                     .map(|tool| Tool {
                         name: tool.name().to_string(),
                         description: tool.description().to_string(),
@@ -137,8 +142,8 @@ impl McpServer {
                     }
                 };
 
-                let request: CallToolRequest = serde_json::from_value(serde_json::Value::Object(params))
-                    .map_err(|_| {
+                let request: CallToolRequest =
+                    serde_json::from_value(serde_json::Value::Object(params)).map_err(|_| {
                         warn!("Failed to parse tool call request parameters");
                         McpError::InvalidParams
                     })?;
@@ -149,15 +154,14 @@ impl McpServer {
                     "Executing tool"
                 );
 
-                let tool = self.tools.get(&request.name)
-                    .ok_or_else(|| {
-                        warn!(tool = %request.name, "Tool not found");
-                        McpError::MethodNotFound
-                    })?;
+                let tool = self.tools.get(&request.name).ok_or_else(|| {
+                    warn!(tool = %request.name, "Tool not found");
+                    McpError::MethodNotFound
+                })?;
 
                 let args = match request.arguments {
                     Some(args) => serde_json::Value::Object(args.into_iter().collect()),
-                    None => serde_json::json!({})
+                    None => serde_json::json!({}),
                 };
 
                 debug!(
@@ -168,7 +172,9 @@ impl McpServer {
 
                 match tool.execute(args).await {
                     Ok(result) => {
-                        let content = result.content.into_iter()
+                        let content = result
+                            .content
+                            .into_iter()
                             .map(|c| Content::Text { text: c.text })
                             .collect();
 
@@ -189,7 +195,7 @@ impl McpServer {
                             result: serde_json::to_value(result)?,
                             id,
                         }))
-                    },
+                    }
                     Err(e) => {
                         warn!(
                             tool = %request.name,
@@ -201,7 +207,7 @@ impl McpServer {
                             error: JsonRpcError::new(ErrorCode::ServerError(-32000)),
                             id,
                         }))
-                    },
+                    }
                 }
             }
             _ => {
@@ -224,13 +230,17 @@ impl McpServer {
         Ok(response)
     }
 
-    pub fn handle_notification(&mut self, method: &str, _params: Option<serde_json::Value>) -> Result<(), McpError> {
+    pub fn handle_notification(
+        &mut self,
+        method: &str,
+        _params: Option<serde_json::Value>,
+    ) -> Result<(), McpError> {
         match method {
             "notifications/initialized" => {
                 info!("Client completed initialization");
                 Ok(())
             }
-            _ => Err(McpError::MethodNotFound)
+            _ => Err(McpError::MethodNotFound),
         }
     }
 }

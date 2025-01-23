@@ -1,5 +1,5 @@
-use std::fmt;
 use jsonrpc_core::{Error as JsonRpcError, ErrorCode};
+use std::fmt;
 
 #[derive(Debug)]
 pub enum McpError {

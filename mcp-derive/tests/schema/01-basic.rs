@@ -1,11 +1,12 @@
 use mcp_derive::mcp_tool;
 use mcp_types::*;
-use async_trait::async_trait;
 
-/// A calculator trait
+/// A basic calculator
+#[derive(Default)]
+struct Calculator {}
+
 #[mcp_tool]
-#[async_trait]
-trait Calculator {
+impl Calculator {
     /// Add two numbers
     /// 
     /// # Parameters
@@ -27,11 +28,11 @@ trait Calculator {
 
 #[tokio::main]
 async fn main() {
-    let calc = CalculatorImpl::default();
-    let tools = calc.into_tools();
+    let calc = Calculator::default();
+    let tools = calc.tools();
     
     // Test add tool
-    let add_tool = &tools.1[0];
+    let add_tool = &tools[0];
     let add_schema = add_tool.input_schema();
     let add_schema_str = serde_json::to_string_pretty(&add_schema).unwrap();
     println!("Add Schema: {}", add_schema_str);
@@ -60,7 +61,7 @@ async fn main() {
     assert!(required.contains(&serde_json::json!("b")));
 
     // Test multiply tool
-    let multiply_tool = &tools.1[1];
+    let multiply_tool = &tools[1];
     let multiply_schema = multiply_tool.input_schema();
     let multiply_schema_str = serde_json::to_string_pretty(&multiply_schema).unwrap();
     println!("Multiply Schema: {}", multiply_schema_str);
