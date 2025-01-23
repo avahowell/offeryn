@@ -6,9 +6,11 @@ use tracing_subscriber::{EnvFilter};
 use std::net::SocketAddr;
 
 /// A simple calculator that can perform basic arithmetic operations
+#[derive(Default, Clone)]
+struct Calculator {}
+
 #[mcp_tool]
-#[async_trait::async_trait]
-trait Calculator {
+impl Calculator {
     /// Add two numbers
     async fn add(&self, a: i64, b: i64) -> Result<i64, String> {
         Ok(a + b)
@@ -52,7 +54,7 @@ async fn main() {
     let mut server = McpServer::new("calculator", "1.0.0");
     
     // Register the calculator tools
-    server.register_tools(CalculatorImpl::default());
+    server.register_tools(Calculator::default());
     
     let server = Arc::new(Mutex::new(server));
 

@@ -19,16 +19,35 @@ impl McpServer {
         }
     }
 
+    pub fn with_tool(&mut self, tool: impl McpTool + 'static) -> &mut Self {
+        let tool_name = tool.name().to_string();
+        info!(tool_name = %tool_name, "Registering tool");
+        self.tools.insert(tool_name, Box::new(tool));
+        self
+    }
+
+    pub fn with_tools(&mut self, tools: Vec<Box<dyn McpTool>>) -> &mut Self {
+        for tool in tools {
+            let name = tool.name().to_string();
+            info!(tool_name = %name, "Registering tool");
+            self.tools.insert(name, tool);
+        }
+        self
+    }
+
     pub fn register_tool<T: McpTool + 'static>(&mut self, tool: T) {
         let tool_name = tool.name().to_string();
         info!(tool_name = %tool_name, "Registering tool");
         self.tools.insert(tool_name, Box::new(tool));
     }
 
-    pub fn register_tools<T: IntoTools>(&mut self, provider: T) {
-        let (_, tools) = provider.into_tools();
-        for tool in tools {
+    pub fn register_tools<T: HasTools>(&mut self, provider: T)
+    where
+        T::Tools: IntoIterator<Item = Box<dyn McpTool>>
+    {
+        for tool in provider.tools() {
             let name = tool.name().to_string();
+            info!(tool_name = %name, "Registering tool");
             self.tools.insert(name, tool);
         }
     }

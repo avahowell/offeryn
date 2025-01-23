@@ -24,10 +24,9 @@ pub trait McpTool: Send + Sync {
     async fn execute(&self, args: Value) -> Result<ToolResult, String>;
 }
 
-/// A trait for types that can be converted into a collection of tools
-pub trait IntoTools: Send + Sync + 'static {
-    /// Returns the base name (e.g. "calculator") and a vec of tools
-    fn into_tools(self) -> (&'static str, Vec<Box<dyn McpTool>>);
+pub trait HasTools {
+    type Tools: IntoIterator<Item = Box<dyn McpTool>>;
+    fn tools(self) -> Self::Tools;
 }
 
 pub fn add(left: u64, right: u64) -> u64 {
