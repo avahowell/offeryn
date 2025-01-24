@@ -1,6 +1,6 @@
 # offeryn
 
-offeryn is a Rust implementation of [modelcontextprotocol](https://modelcontextprotocol.io/), a standard protocol for empowering large language models with tools.
+offeryn (Welsh for tool; implement), is a Rust implementation of [modelcontextprotocol](https://modelcontextprotocol.io/), a standard protocol for empowering large language models with tools.
 
 It aims to offer an easy to use API that allows developers to quickly create and expose tools written in Rust to AI agents.
 
