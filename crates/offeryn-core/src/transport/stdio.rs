@@ -139,14 +139,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mcp_derive::mcp_tool;
+    use offeryn_derive::tool;
     use serde_json::json;
     use tokio::io::{duplex, DuplexStream};
 
     #[derive(Default)]
     struct Calculator {}
 
-    #[mcp_tool]
+    #[tool]
     impl Calculator {
         async fn add(&self, a: i64, b: i64) -> Result<i64, String> {
             Ok(a + b)

@@ -1,6 +1,5 @@
-use async_trait;
-use mcp_derive::mcp_tool;
-use mcp_rs::{McpServer, StdioTransport};
+use offeryn::prelude::*;
+use offeryn::{McpServer, StdioTransport};
 use std::sync::Arc;
 
 /// A simple calculator that can perform basic arithmetic operations

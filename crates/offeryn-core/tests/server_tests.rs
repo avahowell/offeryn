@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use jsonrpc_core::{Call, Id, MethodCall, Output, Params, Version};
-use mcp_rs::{McpError, McpServer, McpTool};
-use mcp_types::*;
+use offeryn_core::{McpError, McpServer};
+use offeryn_types::McpTool;
+use offeryn_types::*;
 use serde_json::{json, Value};
 use std::sync::Arc;
 

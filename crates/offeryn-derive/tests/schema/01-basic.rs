@@ -1,14 +1,14 @@
-use mcp_derive::mcp_tool;
-use mcp_types::*;
+use offeryn_derive::tool;
+use offeryn_types::*;
 
 /// A basic calculator
 #[derive(Default)]
 struct Calculator {}
 
-#[mcp_tool]
+#[tool]
 impl Calculator {
     /// Add two numbers
-    /// 
+    ///
     /// # Parameters
     /// * `a` - First operand
     /// * `b` - Second operand
@@ -17,7 +17,7 @@ impl Calculator {
     }
 
     /// Multiply two numbers
-    /// 
+    ///
     /// # Parameters
     /// * `a` - First number
     /// * `b` - Second number
@@ -30,31 +30,31 @@ impl Calculator {
 async fn main() {
     let calc = Calculator::default();
     let tools = calc.tools();
-    
+
     // Test add tool
     let add_tool = &tools[0];
     let add_schema = add_tool.input_schema();
     let add_schema_str = serde_json::to_string_pretty(&add_schema).unwrap();
     println!("Add Schema: {}", add_schema_str);
-    
+
     // Verify add schema structure
     let schema: serde_json::Value = serde_json::from_str(&add_schema_str).unwrap();
-    
+
     assert_eq!(schema["type"], "object");
-    
+
     let properties = schema["properties"].as_object().unwrap();
     assert_eq!(properties.len(), 2);
-    
+
     let a_prop = &properties["a"];
     assert_eq!(a_prop["type"], "integer");
     assert_eq!(a_prop["format"], "int64");
     assert_eq!(a_prop["description"], "First operand");
-    
-    let b_prop = &properties["b"]; 
+
+    let b_prop = &properties["b"];
     assert_eq!(b_prop["type"], "integer");
     assert_eq!(b_prop["format"], "int64");
     assert_eq!(b_prop["description"], "Second operand");
-    
+
     let required = schema["required"].as_array().unwrap();
     assert_eq!(required.len(), 2);
     assert!(required.contains(&serde_json::json!("a")));
@@ -65,25 +65,25 @@ async fn main() {
     let multiply_schema = multiply_tool.input_schema();
     let multiply_schema_str = serde_json::to_string_pretty(&multiply_schema).unwrap();
     println!("Multiply Schema: {}", multiply_schema_str);
-    
+
     // Verify multiply schema structure
     let schema: serde_json::Value = serde_json::from_str(&multiply_schema_str).unwrap();
-    
+
     assert_eq!(schema["type"], "object");
-    
+
     let properties = schema["properties"].as_object().unwrap();
     assert_eq!(properties.len(), 2);
-    
+
     let a_prop = &properties["a"];
-    assert_eq!(a_prop["type"], "integer"); 
+    assert_eq!(a_prop["type"], "integer");
     assert_eq!(a_prop["format"], "int64");
     assert_eq!(a_prop["description"], "First number");
-    
+
     let b_prop = &properties["b"];
     assert_eq!(b_prop["type"], "integer");
-    assert_eq!(b_prop["format"], "int64"); 
+    assert_eq!(b_prop["format"], "int64");
     assert_eq!(b_prop["description"], "Second number");
-    
+
     let required = schema["required"].as_array().unwrap();
     assert_eq!(required.len(), 2);
     assert!(required.contains(&serde_json::json!("a")));

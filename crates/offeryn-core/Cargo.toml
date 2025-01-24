@@ -1,0 +1,22 @@
+[package]
+name = "offeryn-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+async-trait = "0.1"
+jsonrpc-core = "18.0"
+tracing = "0.1"
+uuid = { version = "1.0", features = ["v4"] }
+offeryn-types = { path = "../offeryn-types" }
+offeryn-derive = { path = "../offeryn-derive" }
+axum = { version = "0.7", features = ["ws"] }
+async-stream = "0.3"
+thiserror = "1.0"
+tower = "0.4"
+tower-http = { version = "0.4", features = ["cors", "trace"] }
+futures = "0.3"
+schemars = "0.8"

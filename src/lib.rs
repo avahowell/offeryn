@@ -1,13 +1,9 @@
-mod error;
-mod server;
-mod tool;
-mod transport;
+pub use offeryn_core::{transport::SseTransport, transport::StdioTransport, McpServer};
+pub use offeryn_derive::tool;
+pub use offeryn_types as types;
 
-pub use error::McpError;
-pub use mcp_types::{
-    CallToolRequest, CallToolResult, Content, InitializeResult, ListToolsResult,
-    ServerCapabilities, ServerInfo, Tool, LATEST_PROTOCOL_VERSION,
-};
-pub use server::McpServer;
-pub use tool::*;
-pub use transport::{SseTransport, StdioTransport};
+pub mod prelude {
+    pub use crate::tool as mcp_tool;
+    pub use offeryn_types;
+    pub use schemars;
+}

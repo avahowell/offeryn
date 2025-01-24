@@ -222,15 +222,15 @@ impl SseTransport {
 mod tests {
     use super::*;
     use crate::McpServer;
-    use mcp_derive::mcp_tool;
+    use jsonrpc_core::{Call, Id, MethodCall, Params, Version};
+    use offeryn_derive::tool;
     use serde_json::{json, Value};
-    use jsonrpc_core::{Id, Params, Version, Call, MethodCall};
 
     /// A simple calculator that can perform basic arithmetic operations
     #[derive(Default)]
     struct Calculator {}
 
-    #[mcp_tool]
+    #[tool]
     impl Calculator {
         /// Add two numbers
         async fn add(&self, a: i64, b: i64) -> Result<i64, String> {

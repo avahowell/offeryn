@@ -1,5 +1,5 @@
-use mcp_derive::mcp_tool;
-use mcp_rs::{McpServer, SseTransport};
+use offeryn::prelude::*;
+use offeryn::{McpServer, SseTransport};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;

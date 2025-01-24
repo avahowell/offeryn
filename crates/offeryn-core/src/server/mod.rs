@@ -3,7 +3,7 @@ use jsonrpc_core::{
     Call, ErrorCode, Failure, Output, Params, Request as JsonRpcRequest,
     Response as JsonRpcResponse, Success, Version,
 };
-use mcp_types::*;
+use offeryn_types::*;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};

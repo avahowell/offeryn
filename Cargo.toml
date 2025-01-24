@@ -1,38 +1,20 @@
 [package]
-name = "mcp-rs"
+name = "offeryn"
 version = "0.1.0"
 edition = "2021"
+description = "An ergonomic Rust toolkit for Model Context Protocol implementations"
 
 [dependencies]
-axum = { version = "0.7", features = ["ws"] }
-tokio = { version = "1.0", features = ["full"] }
-tokio-stream = "0.1"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-async-trait = "0.1"
-futures = "0.3"
-uuid = { version = "1.0", features = ["v4"] }
-anyhow = "1.0"
-async-stream = "0.3"
-thiserror = "1.0"
-tower = "0.4"
-tower-http = { version = "0.4", features = ["cors", "trace"] }
-tracing = "0.1"
-tracing-subscriber = "0.3"
-mcp-derive = { path = "./mcp-derive" }
-hyper = { version = "0.14", features = ["client", "http1"] }
+offeryn-core = { path = "crates/offeryn-core" }
+offeryn-derive = { path = "crates/offeryn-derive" }
+offeryn-types = { path = "crates/offeryn-types" }
 schemars = "0.8"
-mcp-types = { path = "./mcp-types" }
-jsonrpc-core = "18.0"
 
 [workspace]
 members = [
-    "mcp-derive",
-    "mcp-types",
+    "crates/offeryn-core",
+    "crates/offeryn-derive",
+    "crates/offeryn-types",
     "examples/calculator",
-    "examples/stdio-calculator"
+    "examples/stdio-calculator",
 ]
-
-[dev-dependencies]
-reqwest = { version = "0.11", features = ["json"] }
-tokio-test = "0.4"

@@ -126,7 +126,7 @@ fn generate_param_deserialization(param_name: &str, is_optional: bool) -> proc_m
 }
 
 #[proc_macro_attribute]
-pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemImpl);
     let ty = &*input.self_ty;
 
@@ -187,15 +187,15 @@ pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let result_handling = if is_result {
                 quote! {
                     match result {
-                        Ok(result) => Ok(mcp_types::ToolResult {
-                            content: vec![mcp_types::ToolContent {
+                        Ok(result) => Ok(offeryn_types::ToolResult {
+                            content: vec![offeryn_types::ToolContent {
                                 r#type: "text".to_string(),
                                 text: result.to_string(),
                             }],
                             is_error: false,
                         }),
-                        Err(e) => Ok(mcp_types::ToolResult {
-                            content: vec![mcp_types::ToolContent {
+                        Err(e) => Ok(offeryn_types::ToolResult {
+                            content: vec![offeryn_types::ToolContent {
                                 r#type: "text".to_string(),
                                 text: e.to_string(),
                             }],
@@ -205,8 +205,8 @@ pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
             } else {
                 quote! {
-                    Ok(mcp_types::ToolResult {
-                        content: vec![mcp_types::ToolContent {
+                    Ok(offeryn_types::ToolResult {
+                        content: vec![offeryn_types::ToolContent {
                             r#type: "text".to_string(),
                             text: result.to_string(),
                         }],
@@ -269,11 +269,11 @@ pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 }
 
                 #[async_trait::async_trait]
-                impl mcp_types::McpTool for #tool_struct_name {
+                impl offeryn_types::McpTool for #tool_struct_name {
                     fn name(&self) -> &str { #tool_name }
                     fn description(&self) -> &str { #docs }
                     fn input_schema(&self) -> serde_json::Value { #schema_impl }
-                    async fn execute(&self, args: serde_json::Value) -> Result<mcp_types::ToolResult, String> {
+                    async fn execute(&self, args: serde_json::Value) -> Result<offeryn_types::ToolResult, String> {
                         #execute_impl
                     }
                 }
@@ -286,8 +286,8 @@ pub fn mcp_tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
         #input
 
-        impl mcp_types::HasTools for #ty {
-            type Tools = Vec<Box<dyn mcp_types::McpTool>>;
+        impl offeryn_types::HasTools for #ty {
+            type Tools = Vec<Box<dyn offeryn_types::McpTool>>;
             fn tools(self) -> Self::Tools {
                 let this = std::sync::Arc::new(self);
                 vec![

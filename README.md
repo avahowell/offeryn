@@ -1,19 +1,21 @@
-# mcp-rs
+# offeryn
 
-mcp-rs is a Rust implementation of [modelcontextprotocol](https://modelcontextprotocol.io/), a standard protocol for empowering large language models with tools.
+offeryn is a Rust implementation of [modelcontextprotocol](https://modelcontextprotocol.io/), a standard protocol for empowering large language models with tools.
+
+It aims to offer an easy to use API that allows developers to quickly create and expose tools written in Rust to AI agents.
 
 - [x] JSON-RPC core MCP server protocol
 - [x] Procedural macro for tool generation
 - [x] Server-Sent Events (SSE) transport
 - [x] Stdio transport
 - [ ] Client protocol
-- [ ] WebSocket transport 
+- [ ] WebSocket transport
 - [ ] Streaming responses
 
 ## Example (Stdio)
 ```rust
-use mcp_derive::mcp_tool;
-use mcp_rs::{McpServer, StdioTransport};
+use offeryn::prelude::*;
+use offeryn::{StdioTransport, McpServer};
 use std::sync::Arc;
 use async_trait;
 
@@ -58,7 +60,7 @@ async fn main() {
 
     // Create and run the stdio transport
     let transport = StdioTransport::<tokio::io::Stdin, tokio::io::Stdout>::new(server);
-    
+
     if let Err(e) = transport.run().await {
         eprintln!("Error: {}", e);
     }
@@ -71,8 +73,8 @@ Servers configured with stdio transport as above can be hooked to Claude Desktop
 ## Example (SSE)
 
 ```rust
-use mcp_derive::mcp_tool;
-use mcp_rs::{McpServer, SseTransport};
+use offeryn::prelude::*;
+use offeryn::{SseTransport, McpServer};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
