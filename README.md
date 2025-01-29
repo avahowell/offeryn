@@ -5,9 +5,13 @@ offeryn (Welsh for tool; implement), is a Rust implementation of [modelcontextpr
 It aims to offer an easy to use API that allows developers to quickly create and expose tools written in Rust to AI agents.
 
 - [x] JSON-RPC core MCP server protocol
+- [x] Tool use support
 - [x] Procedural macro for tool generation
 - [x] Server-Sent Events (SSE) transport
 - [x] Stdio transport
+- [ ] Resources support
+- [ ] Prompts support
+- [ ] Roots suppot
 - [ ] Client protocol
 - [ ] WebSocket transport
 - [ ] Streaming responses
