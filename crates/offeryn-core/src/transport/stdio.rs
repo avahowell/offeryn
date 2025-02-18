@@ -1,4 +1,5 @@
 use crate::McpServer;
+use axum::async_trait;
 use jsonrpc_core::{Call, Error, Failure, Id, Output, Request, Response, Version};
 use std::sync::Arc;
 use tokio::{
@@ -8,7 +9,36 @@ use tokio::{
     sync::mpsc,
 };
 
-pub struct StdioTransport<R, W>
+#[async_trait]
+trait StdioTransport<R, W>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    async fn read_message(reader: &mut BufReader<R>) -> Result<Vec<u8>, std::io::Error> {
+        let mut line = String::new();
+        let n = reader.read_line(&mut line).await?;
+        if n == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "EOF",
+            ));
+        }
+        Ok(line.into_bytes())
+    }
+
+    async fn write_message(
+        writer: &mut BufWriter<W>,
+        message: &[u8],
+    ) -> Result<(), std::io::Error> {
+        writer.write_all(message).await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
+        Ok(())
+    }
+}
+
+pub struct StdioServerTransport<R, W>
 where
     R: AsyncRead + Unpin + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
@@ -39,30 +69,6 @@ where
             stdin,
             stdout,
         }
-    }
-
-    async fn read_message<RR: AsyncRead + Unpin>(
-        reader: &mut BufReader<RR>,
-    ) -> Result<Vec<u8>, std::io::Error> {
-        let mut line = String::new();
-        let n = reader.read_line(&mut line).await?;
-        if n == 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "EOF",
-            ));
-        }
-        Ok(line.into_bytes())
-    }
-
-    async fn write_message<WW: AsyncWrite + Unpin>(
-        writer: &mut BufWriter<WW>,
-        message: &[u8],
-    ) -> Result<(), std::io::Error> {
-        writer.write_all(message).await?;
-        writer.write_all(b"\n").await?;
-        writer.flush().await?;
-        Ok(())
     }
 
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -134,6 +140,14 @@ where
         let _ = response_handler.await?;
         Ok(())
     }
+}
+
+#[async_trait]
+impl<R, W> StdioTransport<R, W> for StdioServerTransport<R, W>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
 }
 
 #[cfg(test)]
