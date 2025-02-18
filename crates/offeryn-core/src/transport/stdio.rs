@@ -18,7 +18,7 @@ where
     stdout: W,
 }
 
-impl StdioTransport<tokio::io::Stdin, tokio::io::Stdout> {
+impl StdioServerTransport<tokio::io::Stdin, tokio::io::Stdout> {
     pub fn new(server: Arc<McpServer>) -> Self {
         Self {
             server,
@@ -28,7 +28,7 @@ impl StdioTransport<tokio::io::Stdin, tokio::io::Stdout> {
     }
 }
 
-impl<R, W> StdioTransport<R, W>
+impl<R, W> StdioServerTransport<R, W>
 where
     R: AsyncRead + Unpin + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
@@ -162,7 +162,7 @@ mod tests {
         let (client_reader, server_writer) = duplex(1024);
         let (server_reader, client_writer) = duplex(1024);
 
-        let transport = StdioTransport::with_streams(server, server_reader, server_writer);
+        let transport = StdioServerTransport::with_streams(server, server_reader, server_writer);
         let server_task = tokio::spawn(async move {
             transport.run().await.unwrap();
         });
@@ -182,7 +182,7 @@ mod tests {
 
         let mut client_writer = BufWriter::new(client_writer);
         let request_json = serde_json::to_vec(&request).unwrap();
-        StdioTransport::<DuplexStream, DuplexStream>::write_message(
+        StdioServerTransport::<DuplexStream, DuplexStream>::write_message(
             &mut client_writer,
             &request_json,
         )
@@ -191,7 +191,7 @@ mod tests {
 
         let mut client_reader = BufReader::new(client_reader);
         let response_bytes =
-            StdioTransport::<DuplexStream, DuplexStream>::read_message(&mut client_reader)
+            StdioServerTransport::<DuplexStream, DuplexStream>::read_message(&mut client_reader)
                 .await
                 .unwrap();
         let response: Response = serde_json::from_slice(&response_bytes).unwrap();

@@ -1,5 +1,5 @@
 use offeryn::prelude::*;
-use offeryn::{McpServer, StdioTransport};
+use offeryn::{McpServer, StdioServerTransport};
 use std::sync::Arc;
 
 /// A simple calculator that can perform basic arithmetic operations
@@ -42,7 +42,7 @@ async fn main() {
     server.register_tools(Calculator::default()).await;
 
     // Create and run the stdio transport
-    let transport = StdioTransport::<tokio::io::Stdin, tokio::io::Stdout>::new(server);
+    let transport = StdioServerTransport::<tokio::io::Stdin, tokio::io::Stdout>::new(server);
 
     if let Err(e) = transport.run().await {
         eprintln!("Error: {}", e);

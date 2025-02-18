@@ -1,4 +1,4 @@
 mod sse;
 mod stdio;
-pub use sse::SseTransport;
-pub use stdio::StdioTransport;
+pub use sse::SseServerTransport;
+pub use stdio::StdioServerTransport;

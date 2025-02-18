@@ -1,4 +1,4 @@
-pub use offeryn_core::{transport::SseTransport, transport::StdioTransport, McpServer};
+pub use offeryn_core::{transport::SseServerTransport, transport::StdioServerTransport, McpServer};
 pub use offeryn_derive::tool;
 pub use offeryn_types as types;
 
