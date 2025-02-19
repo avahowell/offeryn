@@ -190,7 +190,7 @@ pub fn tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
                         Ok(result) => Ok(offeryn_types::ToolResult {
                             content: vec![offeryn_types::ToolContent {
                                 r#type: "text".to_string(),
-                                text: result.to_string(),
+                                text: serde_json::to_value(result).map_err(|e| e.to_string())?.to_string(),
                             }],
                             is_error: false,
                         }),
@@ -208,7 +208,7 @@ pub fn tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     Ok(offeryn_types::ToolResult {
                         content: vec![offeryn_types::ToolContent {
                             r#type: "text".to_string(),
-                            text: result.to_string(),
+                            text: serde_json::to_value(result).map_err(|e| e.to_string())?.to_string(),
                         }],
                         is_error: false,
                     })

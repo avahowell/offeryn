@@ -318,7 +318,7 @@ mod tests {
             let result: Value = success.result;
             let content = result.get("content").unwrap().as_array().unwrap();
             let text = content[0].get("text").unwrap().as_str().unwrap();
-            assert_eq!(text, "5"); // 10 / 2 = 5
+            assert_eq!(text, "5.0"); // 10 / 2 = 5
         } else {
             panic!("Expected successful response");
         }
