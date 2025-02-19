@@ -4,7 +4,7 @@ pub use jsonrpc_core::{
     Version,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,7 +99,8 @@ pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2024-11-05"];
 #[serde(rename_all = "camelCase")]
 pub struct JsonRpcMessage<T> {
     pub jsonrpc: String,
-    pub id: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<u64>,
     #[serde(flatten)]
     pub content: T,
 }
@@ -109,6 +110,24 @@ pub struct JsonRpcMessage<T> {
 pub struct InitializeRequest {
     pub method: String, // Will be "initialize"
     pub params: InitializeParams,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InitializeResponse {
+    pub result: InitializeResult,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InitializedNotification {
+    pub params: InitializedNotificationParams,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InitializedNotificationParams {
+    pub meta: Map<String, Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -165,4 +184,24 @@ pub enum Content {
 
     #[serde(rename = "resource")]
     EmbeddedResource { uri: String, name: Option<String> },
+}
+
+// Collin: Pulled this over from the types generated from the MCP spec schema.
+// There are missing variants for now.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+#[serde(untagged)]
+pub enum ServerResult {
+    InitializeResult(InitializeResult),
+}
+
+impl From<&ServerResult> for ServerResult {
+    fn from(value: &ServerResult) -> Self {
+        value.clone()
+    }
+}
+
+impl From<InitializeResult> for ServerResult {
+    fn from(value: InitializeResult) -> Self {
+        Self::InitializeResult(value)
+    }
 }

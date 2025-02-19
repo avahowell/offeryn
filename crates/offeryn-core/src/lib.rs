@@ -1,7 +1,9 @@
+pub mod client;
 pub mod error;
 pub mod server;
 pub mod transport;
 
+pub use client::StdioClient;
 pub use error::McpError;
 pub use offeryn_types::{
     CallToolRequest, CallToolResult, Content, InitializeResult, ListToolsResult,
