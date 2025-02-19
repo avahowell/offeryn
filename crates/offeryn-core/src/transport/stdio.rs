@@ -1,4 +1,5 @@
 use crate::McpServer;
+use axum::async_trait;
 use jsonrpc_core::{Call, Error, Failure, Id, Output, Request, Response, Version};
 use std::sync::Arc;
 use tokio::{
@@ -8,42 +9,13 @@ use tokio::{
     sync::mpsc,
 };
 
-pub struct StdioTransport<R, W>
+#[async_trait]
+trait StdioTransport<R, W>
 where
     R: AsyncRead + Unpin + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
 {
-    server: Arc<McpServer>,
-    stdin: R,
-    stdout: W,
-}
-
-impl StdioTransport<tokio::io::Stdin, tokio::io::Stdout> {
-    pub fn new(server: Arc<McpServer>) -> Self {
-        Self {
-            server,
-            stdin: stdin(),
-            stdout: stdout(),
-        }
-    }
-}
-
-impl<R, W> StdioTransport<R, W>
-where
-    R: AsyncRead + Unpin + Send + 'static,
-    W: AsyncWrite + Unpin + Send + 'static,
-{
-    pub fn with_streams(server: Arc<McpServer>, stdin: R, stdout: W) -> Self {
-        Self {
-            server,
-            stdin,
-            stdout,
-        }
-    }
-
-    async fn read_message<RR: AsyncRead + Unpin>(
-        reader: &mut BufReader<RR>,
-    ) -> Result<Vec<u8>, std::io::Error> {
+    async fn read_message(reader: &mut BufReader<R>) -> Result<Vec<u8>, std::io::Error> {
         let mut line = String::new();
         let n = reader.read_line(&mut line).await?;
         if n == 0 {
@@ -55,14 +27,48 @@ where
         Ok(line.into_bytes())
     }
 
-    async fn write_message<WW: AsyncWrite + Unpin>(
-        writer: &mut BufWriter<WW>,
+    async fn write_message(
+        writer: &mut BufWriter<W>,
         message: &[u8],
     ) -> Result<(), std::io::Error> {
         writer.write_all(message).await?;
         writer.write_all(b"\n").await?;
         writer.flush().await?;
         Ok(())
+    }
+}
+
+pub struct StdioServerTransport<R, W>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    server: Arc<McpServer>,
+    stdin: R,
+    stdout: W,
+}
+
+impl StdioServerTransport<tokio::io::Stdin, tokio::io::Stdout> {
+    pub fn new(server: Arc<McpServer>) -> Self {
+        Self {
+            server,
+            stdin: stdin(),
+            stdout: stdout(),
+        }
+    }
+}
+
+impl<R, W> StdioServerTransport<R, W>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    pub fn with_streams(server: Arc<McpServer>, stdin: R, stdout: W) -> Self {
+        Self {
+            server,
+            stdin,
+            stdout,
+        }
     }
 
     pub async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
@@ -136,6 +142,14 @@ where
     }
 }
 
+#[async_trait]
+impl<R, W> StdioTransport<R, W> for StdioServerTransport<R, W>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,7 +176,7 @@ mod tests {
         let (client_reader, server_writer) = duplex(1024);
         let (server_reader, client_writer) = duplex(1024);
 
-        let transport = StdioTransport::with_streams(server, server_reader, server_writer);
+        let transport = StdioServerTransport::with_streams(server, server_reader, server_writer);
         let server_task = tokio::spawn(async move {
             transport.run().await.unwrap();
         });
@@ -182,7 +196,7 @@ mod tests {
 
         let mut client_writer = BufWriter::new(client_writer);
         let request_json = serde_json::to_vec(&request).unwrap();
-        StdioTransport::<DuplexStream, DuplexStream>::write_message(
+        StdioServerTransport::<DuplexStream, DuplexStream>::write_message(
             &mut client_writer,
             &request_json,
         )
@@ -191,7 +205,7 @@ mod tests {
 
         let mut client_reader = BufReader::new(client_reader);
         let response_bytes =
-            StdioTransport::<DuplexStream, DuplexStream>::read_message(&mut client_reader)
+            StdioServerTransport::<DuplexStream, DuplexStream>::read_message(&mut client_reader)
                 .await
                 .unwrap();
         let response: Response = serde_json::from_slice(&response_bytes).unwrap();

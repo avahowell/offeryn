@@ -1,5 +1,5 @@
 use offeryn::prelude::*;
-use offeryn::{McpServer, SseTransport};
+use offeryn::{McpServer, SseServerTransport};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
@@ -55,7 +55,7 @@ async fn main() {
     server.register_tools(Calculator::default()).await;
 
     // Create the router
-    let app = SseTransport::create_router(server);
+    let app = SseServerTransport::create_router(server);
 
     // Bind to localhost:3000
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));

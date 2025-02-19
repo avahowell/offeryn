@@ -18,11 +18,11 @@ use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-pub struct SseTransport {
+pub struct SseServerTransport {
     connections: HashMap<String, mpsc::Sender<Result<Event, Infallible>>>,
 }
 
-impl SseTransport {
+impl SseServerTransport {
     pub fn new() -> Self {
         info!("Creating new SSE transport");
         Self {
@@ -38,7 +38,7 @@ impl SseTransport {
             .route(
                 "/sse",
                 get(
-                    |Extension(state): Extension<Arc<Mutex<SseTransport>>>| async move {
+                    |Extension(state): Extension<Arc<Mutex<SseServerTransport>>>| async move {
                         info!("New SSE connection request received");
                         Self::sse_handler(state).await
                     },
@@ -48,7 +48,7 @@ impl SseTransport {
                 "/message",
                 post(
                     |Query(params): Query<HashMap<String, String>>,
-                     Extension(state): Extension<Arc<Mutex<SseTransport>>>,
+                     Extension(state): Extension<Arc<Mutex<SseServerTransport>>>,
                      Extension(server): Extension<Arc<McpServer>>,
                      Json(request): Json<JsonRpcRequest>| async move {
                         let session_id = match params.get("sessionId") {
@@ -81,7 +81,7 @@ impl SseTransport {
     }
 
     async fn sse_handler(
-        state: Arc<Mutex<SseTransport>>,
+        state: Arc<Mutex<SseServerTransport>>,
     ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
         let (tx, mut rx) = mpsc::channel(100);
         let session_id = Uuid::new_v4().to_string();
@@ -138,7 +138,7 @@ impl SseTransport {
 
     async fn message_handler(
         session_id: String,
-        state: Arc<Mutex<SseTransport>>,
+        state: Arc<Mutex<SseServerTransport>>,
         server: Arc<McpServer>,
         request: JsonRpcRequest,
     ) -> Result<Json<JsonRpcResponse>, StatusCode> {
@@ -362,6 +362,6 @@ mod tests {
         let server = Arc::new(server);
 
         // Create the router
-        let _app = SseTransport::create_router(server);
+        let _app = SseServerTransport::create_router(server);
     }
 }
