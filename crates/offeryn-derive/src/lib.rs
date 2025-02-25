@@ -194,13 +194,17 @@ pub fn tool(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             }],
                             is_error: false,
                         }),
-                        Err(e) => Ok(offeryn_types::ToolResult {
-                            content: vec![offeryn_types::ToolContent {
-                                r#type: "text".to_string(),
-                                text: e.to_string(),
-                            }],
-                            is_error: true,
-                        })
+                        Err(e) => {
+                            // Use a string representation of the error without requiring From implementations
+                            let error_string = format!("{}", e);
+                            Ok(offeryn_types::ToolResult {
+                                content: vec![offeryn_types::ToolContent {
+                                    r#type: "text".to_string(),
+                                    text: error_string,
+                                }],
+                                is_error: true,
+                            })
+                        }
                     }
                 }
             } else {
