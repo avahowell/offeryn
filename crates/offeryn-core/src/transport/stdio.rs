@@ -1,6 +1,8 @@
 use crate::McpServer;
 use axum::async_trait;
 use jsonrpc_core::{Call, Error, Failure, Id, Output, Request, Response, Version};
+use offeryn_types::JsonRpcMessage;
+use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 use tokio::{
     io::{
@@ -10,7 +12,7 @@ use tokio::{
 };
 
 #[async_trait]
-trait StdioTransport<R, W>
+pub trait StdioTransport<R, W>
 where
     R: AsyncRead + Unpin + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
@@ -144,6 +146,55 @@ where
 
 #[async_trait]
 impl<R, W> StdioTransport<R, W> for StdioServerTransport<R, W>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+}
+
+pub struct StdioClientTransport<R, W>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    reader: BufReader<R>,
+    writer: BufWriter<W>,
+}
+
+impl<R, W> StdioClientTransport<R, W>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    pub fn with_streams(stdin: W, stdout: R) -> Self {
+        Self {
+            reader: BufReader::new(stdout),
+            writer: BufWriter::new(stdin),
+        }
+    }
+
+    pub async fn send<Req: Serialize>(
+        &mut self,
+        request: JsonRpcMessage<Req>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let request_json = serde_json::to_vec(&request).unwrap();
+
+        Self::write_message(&mut self.writer, &request_json)
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn recv<Res: DeserializeOwned>(
+        &mut self,
+    ) -> Result<JsonRpcMessage<Res>, Box<dyn std::error::Error>> {
+        let response = Self::read_message(&mut self.reader).await?;
+
+        serde_json::from_slice(&response).map_err(Into::into)
+    }
+}
+
+#[async_trait]
+impl<R, W> StdioTransport<R, W> for StdioClientTransport<R, W>
 where
     R: AsyncRead + Unpin + Send + 'static,
     W: AsyncWrite + Unpin + Send + 'static,
